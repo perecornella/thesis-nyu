@@ -1,0 +1,12 @@
+numpy
+pandas
+matplotlib
+seaborn
+scipy
+PyWavelets
+ipywidgets
+opencv-python
+ipykernel
+mplcursors
+plotly
+scikit-learn
