@@ -1,7 +1,7 @@
 Pere Cornellà - 12/12/2024
 
 **⚙️ Instructions to set up the GUI**
-1. Clone the repo.
+1. Make sure you have the last version of the repo.
 2. Set up a python virtual environment ```python3 -m venv ./venv``` (change python3 to your interpreter).
 3. Activate the virtual environment ```source ./venv/bin/activate```.
 4. Install the packages ```pip3 install -r ./config/requirements.txt``` (change pip3 to your downloader).
