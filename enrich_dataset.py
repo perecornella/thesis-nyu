@@ -18,9 +18,12 @@ class Canvas(FigureCanvas):
         self.setParent(parent)  # Set the parent for the canvas
 
 class AppDemo(QWidget):
-    def __init__(self, input_directory=None):
+    def __init__(self, input_directory=None, input_file=None):
+
         super().__init__()
-        
+        self.input_directory = input_directory
+        self.input_file = input_file
+
         # Create the main layout
         self.layout = QVBoxLayout()
 
@@ -63,10 +66,13 @@ class AppDemo(QWidget):
         while self.batch_pointer < self.number_of_batches:
 
             if self.counter == 0:
-                if self.end - self.checkpoint > 10:
-                    batch = [self.checkpoint, self.checkpoint + 10]
+                if self.input_file is not None:
+                    batch = [int(self.input_file[1:]), 1]
                 else:
-                    batch = [self.checkpoint, self.end]
+                    if self.end - self.checkpoint > 10:
+                        batch = [self.checkpoint, self.checkpoint + 10]
+                    else:
+                        batch = [self.checkpoint, self.end]
 
                 self.data, self.tonedata, self.error_files = read_in_data(root_dir + self.dir, batch, datachannel, triggerchannel)
                 self.df = pd.merge(self.data, self.tonedata, how="left", on="toneid")
@@ -80,18 +86,23 @@ class AppDemo(QWidget):
                     self.counter = (batch[1] - batch[0]) - len(self.error_files)
             
             else:
-                while self.checkpoint < self.end:
-                    if f"A{self.checkpoint:03d}" not in self.error_files:
-                        self.sample = self.df[self.df["toneid"].str.startswith(f"A{self.checkpoint:03d}")]
-                        self.filename = f"{self.dir}A{self.checkpoint:03d} channel {datachannel}"
-                        all_error = False
-                        self.counter -= 1
-                        break
-                    else:
-                        self.checkpoint += 1
-                
-                dir_info.loc[dir_info['name'] == self.dir, 'checkpoint'] = self.checkpoint
-                
+                if self.input_file is not None:
+                    self.sample = self.df[self.df["toneid"].str.startswith(self.input_file)]
+                    self.filename = f"{self.dir}{self.input_file} channel {datachannel}"
+                    all_error = False
+                else:
+                    while self.checkpoint < self.end:
+                        if f"A{self.checkpoint:03d}" not in self.error_files:
+                            self.sample = self.df[self.df["toneid"].str.startswith(f"A{self.checkpoint:03d}")]
+                            self.filename = f"{self.dir}A{self.checkpoint:03d} channel {datachannel}"
+                            all_error = False
+                            self.counter -= 1
+                            break
+                        else:
+                            self.checkpoint += 1
+                    
+                    dir_info.loc[dir_info['name'] == self.dir, 'checkpoint'] = self.checkpoint
+                    
                 if not all_error:
                     break
 
@@ -100,7 +111,7 @@ class AppDemo(QWidget):
             dir_info.to_csv('metadata/dir_info.csv')
             metadata.to_csv(f'metadata/{datachannel}.csv')
             sys.exit(1)
-
+        
         # Add the initial dashboard (Canvas) to the layout
         self.chart = Canvas(self, self.sample, self.filename)
         self.layout.addWidget(self.chart)
@@ -190,97 +201,101 @@ class AppDemo(QWidget):
         self.setLayout(self.layout)
 
     def on_send_clicked(self):
-        # Get the selected Yes/No values
-        tuned = "Yes" if self.tuned_button_yes.isChecked() else "No"
-        clear = "Yes" if self.clear_button_yes.isChecked() else "No"
-        healthy = "Yes" if self.healthy_button_yes.isChecked() else "No"
+        if self.input_file is not None:
+            QMessageBox.warning(self, "Warning", "You inserted a filename; changes cannot be persisted.")
 
-        # Get the selected Type
-        selected_type = self.type_combobox.currentText()
+        else:
+            # Get the selected Yes/No values
+            tuned = "Yes" if self.tuned_button_yes.isChecked() else "No"
+            clear = "Yes" if self.clear_button_yes.isChecked() else "No"
+            healthy = "Yes" if self.healthy_button_yes.isChecked() else "No"
 
-        # Get the coordinates
-        x0 = float(self.x0_input.text())
-        xf = float(self.xf_input.text())
-        i = float(self.i_input.text())
-        n = float(self.n_input.text())
-        y = float(self.y_input.text())
-        z = float(self.z_input.text())
+            # Get the selected Type
+            selected_type = self.type_combobox.currentText()
 
-        # Prepare the message for the confirmation pop-up
-        confirmation_message = f"Tuned: {tuned}\nClear: {clear}\nHealthy: {healthy}\nType: {selected_type}\nCoordinates: x={x0 + i * (xf - x0) // n}, y={y}, z={z}"
+            # Get the coordinates
+            x0 = float(self.x0_input.text())
+            xf = float(self.xf_input.text())
+            i = float(self.i_input.text())
+            n = float(self.n_input.text())
+            y = float(self.y_input.text())
+            z = float(self.z_input.text())
 
-        # Show the confirmation pop-up
-        reply = QMessageBox.question(self, 'Confirm your entries', f"Are you sure you want to submit the following values?\n\n{confirmation_message}", 
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            # Prepare the message for the confirmation pop-up
+            confirmation_message = f"Tuned: {tuned}\nClear: {clear}\nHealthy: {healthy}\nType: {selected_type}\nCoordinates: x={x0 + i * (xf - x0) // n}, y={y}, z={z}"
 
-        if reply == QMessageBox.Yes:
-            new_row = {
-                'directory': self.dir,
-                'filename': f"A{self.checkpoint:03d}",
-                'tuned': tuned,
-                'clear': clear,
-                'healthy': healthy,
-                'type': selected_type,
-                'x': x0 + i * (xf - x0) // n,
-                'y': y,
-                'z': z,
-                'd': self.d,
-                'bf': self.bf,
-                'th': self.th,
-                'entrydate': datetime.now()
-            }
+            # Show the confirmation pop-up
+            reply = QMessageBox.question(self, 'Confirm your entries', f"Are you sure you want to submit the following values?\n\n{confirmation_message}", 
+                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
-            # Add the new row to the DataFrame
-            metadata.loc[len(metadata)] = new_row
+            if reply == QMessageBox.Yes:
+                new_row = {
+                    'directory': self.dir,
+                    'filename': f"A{self.checkpoint:03d}",
+                    'tuned': tuned,
+                    'clear': clear,
+                    'healthy': healthy,
+                    'type': selected_type,
+                    'x': x0 + i * (xf - x0) // n,
+                    'y': y,
+                    'z': z,
+                    'd': self.d,
+                    'bf': self.bf,
+                    'th': self.th,
+                    'entrydate': datetime.now()
+                }
+
+                # Add the new row to the DataFrame
+                metadata.loc[len(metadata)] = new_row
 
 
-            # If user clicked Yes, proceed with sending the data
-            # print(f"Confirmed: {confirmation_message}")
-            self.checkpoint += 1
-            all_error = True
-            while self.batch_pointer < self.number_of_batches:
-                if self.counter == 0:
-                    if self.end - self.checkpoint > 10:
-                        batch = [self.checkpoint, self.checkpoint + 10]
-                    else:
-                        batch = [self.checkpoint, self.end]
+                # If user clicked Yes, proceed with sending the data
+                # print(f"Confirmed: {confirmation_message}")
+                self.checkpoint += 1
+                all_error = True
+                while self.batch_pointer < self.number_of_batches:
+                    if self.counter == 0:
+                        if self.end - self.checkpoint > 10:
+                            batch = [self.checkpoint, self.checkpoint + 10]
+                        else:
+                            batch = [self.checkpoint, self.end]
 
-                    self.data, self.tonedata, self.error_files = read_in_data(root_dir + self.dir, batch, datachannel, triggerchannel)
-                    self.df = pd.merge(self.data, self.tonedata, how="left", on="toneid")
-                    
-                    if len(self.error_files) - (batch[1] - batch[0]) == 0:  # All files are error
-                        self.batch_pointer += 1
-                        self.checkpoint += batch[1] - batch[0]
-                        dir_info.loc[dir_info['name'] == self.dir, 'checkpoint'] = self.checkpoint
-                        break
-                    else:
-                        self.counter = (batch[1] - batch[0]) - len(self.error_files)
-                
-                else:
-                    while self.checkpoint < self.end:
-                        if f"A{self.checkpoint:03d}" not in self.error_files:
-                            self.sample = self.df[self.df["toneid"].str.startswith(f"A{self.checkpoint:03d}")]
-                            self.filename = f"{self.dir}A{self.checkpoint:03d} channel {datachannel}"
-                            all_error = False
-                            self.counter -= 1
+                        self.data, self.tonedata, self.error_files = read_in_data(root_dir + self.dir, batch, datachannel, triggerchannel)
+                        self.df = pd.merge(self.data, self.tonedata, how="left", on="toneid")
+                        
+                        if len(self.error_files) - (batch[1] - batch[0]) == 0:  # All files are error
+                            self.batch_pointer += 1
+                            self.checkpoint += batch[1] - batch[0]
+                            dir_info.loc[dir_info['name'] == self.dir, 'checkpoint'] = self.checkpoint
                             break
                         else:
-                            self.checkpoint += 1
-            
-                    dir_info.loc[dir_info['name'] == self.dir, 'checkpoint'] = self.checkpoint
-                    if not all_error:
-                        break
-                            
-            if all_error:
-                print(f"All the remaining non-error files in {self.dir} have been processed.")
-                dir_info.to_csv('metadata/dir_info.csv')
-                metadata.to_csv(f'metadata/{datachannel}.csv')
-                sys.exit(1)
+                            self.counter = (batch[1] - batch[0]) - len(self.error_files)
+                    
+                    else:
+                        while self.checkpoint < self.end:
+                            if f"A{self.checkpoint:03d}" not in self.error_files:
+                                self.sample = self.df[self.df["toneid"].str.startswith(f"A{self.checkpoint:03d}")]
+                                self.filename = f"{self.dir}A{self.checkpoint:03d} channel {datachannel}"
+                                all_error = False
+                                self.counter -= 1
+                                break
+                            else:
+                                self.checkpoint += 1
+                
+                        dir_info.loc[dir_info['name'] == self.dir, 'checkpoint'] = self.checkpoint
+                        if not all_error:
+                            break
+                                
+                if all_error:
+                    print(f"All the remaining non-error files in {self.dir} have been processed.")
+                    dir_info.to_csv('metadata/dir_info.csv')
+                    metadata.to_csv(f'metadata/{datachannel}.csv')
+                    sys.exit(1)
 
-            self.update_dashboard()
-        else:
-            # If user clicked No, just print the message
-            print("Submission cancelled.")
+                self.update_dashboard()
+            else:
+                # If user clicked No, just print the message
+                print("Submission cancelled.")
 
     def update_dashboard(self):
         plt.close(self.chart.figure)
@@ -327,10 +342,14 @@ if __name__ == "__main__":
         metadata = pd.DataFrame(columns=['directory', 'filename', 'tuned', 'clear', 'healthy', 'type', 'x', 'y', 'z', 'd', 'bf', 'th', 'entrydate'])
 
     app = QApplication(sys.argv)
-    if sys.argv[1] is not None:
+    
+    if len(sys.argv) == 3:
+        demo = AppDemo(sys.argv[1], sys.argv[2])
+    elif len(sys.argv) == 2:
         demo = AppDemo(sys.argv[1])
     else:
         demo = AppDemo()
+
     demo.show()
     demo.closeEvent = demo.closeEvent
     sys.exit(app.exec_())
