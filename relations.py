@@ -1,4 +1,3 @@
-from utils import read_in_data, i_to_name, activity
 import numpy as np
 import pandas as pd 
 import plotly.express as px
@@ -17,46 +16,46 @@ triggerchannel = 'di4P'
 
 # Get the files
 
-dir_location = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
+# dir_location = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
 
-rec = np.array([2,35])
-# rec = np.array([1,0,1])
-dir_location = dir_location + folder + "/"
+# rec = np.array([2,35])
+# # rec = np.array([1,0,1])
+# dir_location = dir_location + folder + "/"
 
-data, tonedata = read_in_data(dir_location, rec, datachannel, triggerchannel)
+# data, tonedata = read_in_data(dir_location, rec, datachannel, triggerchannel)
 
-locations = pd.read_csv('locations_' + folder + '.csv')
-new_locations = []
-for index, row in locations.iterrows():
-    interpolation_points = row['ff'] - row['f0']
-    interpolation_step = (row['xf'] - row['x0']) / interpolation_points
-    for i in range(row['f0'], row['ff'] + 1):
-        file = i_to_name(i, mode="d")
-        position = i - row['f0']
-        new_locations.append({
-            "Name": file,
-            "x": row['x0'] + position * interpolation_step, # Linear interpolation
-            "y": row['y'],
-            "z": row['z']
-        })
+# locations = pd.read_csv('metadata/locations_' + folder + '.csv')
+# new_locations = []
+# for index, row in locations.iterrows():
+#     interpolation_points = row['ff'] - row['f0']
+#     interpolation_step = (row['xf'] - row['x0']) / interpolation_points
+#     for i in range(row['f0'], row['ff'] + 1):
+#         file = i_to_name(i, mode="d")
+#         position = i - row['f0']
+#         new_locations.append({
+#             "Name": file,
+#             "x": row['x0'] + position * interpolation_step, # Linear interpolation
+#             "y": row['y'],
+#             "z": row['z']
+#         })
 
-locations = pd.DataFrame(new_locations)
+# locations = pd.DataFrame(new_locations)
 
-cfs = []
-for i in range(rec[0], rec[0] + rec[1]):
-    ad = activity(i, data, tonedata,
-                  metric = windowed_variance,
-                  title = "no_title",
-                  show = False, sort = False)
+# cfs = []
+# for i in range(rec[0], rec[0] + rec[1]):
+#     ad = activity(i, data, tonedata,
+#                   metric = windowed_variance,
+#                   title = "no_title",
+#                   show = False, sort = False)
 
-    ad['Relevance'] = ad['Activity'] ** (-ad['Intensity']/10)
-    ad['Relevance'] = ad['Relevance'] / sum( ad['Relevance'] )
-    characteristic_frequency = sum(ad['Frequency'] * ad['Relevance'])
-    file = i_to_name(i, mode="d")
-    cfs.append({"Name": file, "CF": characteristic_frequency})
+#     ad['Relevance'] = ad['Activity'] ** (-ad['Intensity']/10)
+#     ad['Relevance'] = ad['Relevance'] / sum( ad['Relevance'] )
+#     characteristic_frequency = sum(ad['Frequency'] * ad['Relevance'])
+#     file = i_to_name(i, mode="d")
+#     cfs.append({"Name": file, "CF": characteristic_frequency})
 
-cfs = pd.DataFrame(cfs)
-locations = pd.merge(cfs, locations, on='Name')
+# cfs = pd.DataFrame(cfs)
+# locations = pd.merge(cfs, locations, on='Name')
 
 
 # ### PCA
@@ -83,9 +82,11 @@ locations = pd.merge(cfs, locations, on='Name')
 
 # fig.show()
 
+value_of_interest = 'th'
 
 # idea: find pairs
 
+locations = pd.read_csv('metadata/di0P.csv')
 
 # option 1: every point points to the closest one in CF
 arrows = []
@@ -93,8 +94,8 @@ for i, base in locations.iterrows():
     tip = None
     min_dist = 1e99
     for j, aux in locations.iterrows():
-        if aux['Name'] != base['Name']:
-            dist = np.abs(aux['CF'] - base['CF'])
+        if aux['filename'] != base['filename']:
+            dist = np.abs(aux[value_of_interest] - base[value_of_interest])
             if dist < min_dist:
                 min_dist = dist
                 tip = aux
@@ -112,7 +113,7 @@ pairs = []
 for i, base in locations.iterrows():
     for j, aux in locations.iterrows():
         if i != j:
-            dist = np.abs(aux['CF'] - base['CF'])
+            dist = np.abs(aux[value_of_interest] - base[value_of_interest])
             pairs.append({
                 "base_index": i,
                 "tip_index": j,
@@ -145,8 +146,8 @@ fig = px.scatter_3d(
     x='x',
     y='y',
     z='z',
-    color='CF',
-    hover_name='Name',
+    color=value_of_interest,
+    hover_name='filename',
     color_continuous_scale='Blues',
     title=folder
 )
@@ -187,7 +188,6 @@ for arrow in arrows:
     ))
 
 # Save and display
-fig.write_html("outputs/" + folder + ".html")
 fig.show()
 
 result = optimal_plane.calculate(arrows)
@@ -210,8 +210,8 @@ for index, row in locations.iterrows():
         'proj_x': proj_x,
         'proj_y': proj_y,
         'proj_z': proj_z,
-        'CF': row['CF'],  
-        'Name': row['Name']
+        value_of_interest: row[value_of_interest],  
+        'filename': row['filename']
     })
 
 projected_df = pd.DataFrame(projected_points)
@@ -221,12 +221,11 @@ fig = px.scatter_3d(
     x='proj_x',
     y='proj_y',
     z='proj_z',
-    color='CF',
-    hover_name='Name',
+    color=value_of_interest,
+    hover_name='filename',
     color_continuous_scale='Blues',
     title='Projected Points onto Plane'
 )
 
 fig.update_traces(marker=dict(size=5))
-
 fig.show()

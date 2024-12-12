@@ -3,7 +3,7 @@ import numpy as np
 import sys
 
 
-def windowed_variance(arr: np.array, window: List) -> float:
+def lacking_name(arr: np.array, window: List) -> float:
     """
     Calculates the variance of a window of an array taking the mean of the whole array.
 
@@ -21,14 +21,19 @@ def windowed_variance(arr: np.array, window: List) -> float:
     i_min = window[0]
     i_max = window[1]
 
-    try:
-        slice_arr = arr[i_min:i_max+1]
-        return 1 / (i_max - i_min) * np.sum(np.square(slice_arr - mean))
-    except:
-        print('Indices are out of bounds')
-        sys.exit(1)
+    if i_min < 0 or i_max >= len(arr):
+            print('Indices are out of bounds')
+            sys.exit(1)
 
-def variance(arr: np.array, window = None):
+    result = 0
+    for i in range(i_min, i_max):
+         result += (arr[i] - mean)**2
+
+    result /= (i_max - i_min)
+        # Calculate the variance of the slice with respect to the mean of the whole array
+    return result
+
+def windowed_variance(arr: np.array, window = None):
     if window is None:
         return np.var(arr)
     else:
@@ -36,4 +41,14 @@ def variance(arr: np.array, window = None):
         i_max = window[1]
         slice_arr = arr[i_min:i_max+1]
         return np.var(slice_arr)
-    
+
+def variance(arr: np.array, window = None):
+   return np.var(arr)
+
+def width(arr: np.array, window = None):
+    i_min = window[0]
+    i_max = window[1]
+    if i_min < 0 or i_max >= len(arr):
+            print('Indices are out of bounds')
+            sys.exit(1)
+    return max(arr[i_min:i_max]) - min(arr[i_min:i_max])

@@ -10,3 +10,4 @@ ipykernel
 mplcursors
 plotly
 scikit-learn
+PyQt5

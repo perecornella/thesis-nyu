@@ -1,5 +1,7 @@
 from numpy import arange, array, concatenate, insert
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.lines as mlines
+from scipy import ndimage
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -7,8 +9,10 @@ import numpy as np
 import cv2 as cv
 import pickle
 import sys
+import time
+import signal
 
-from typing import Tuple
+from typing import Tuple, Callable
 
 
 tbefore = 20.
@@ -49,7 +53,6 @@ def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
     nrun = 0 # 0..number_of_runs
     channelname = datachannel + '%03d' % nrun
     triggername = triggerchannel + '%03d' % nrun
-    
     while True:
         if nrun == 0:
             rawd0 = data[channelname]
@@ -75,15 +78,23 @@ def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
             ntones += 1
     
     if len(tonestart) != ntones:  		
-        print ('Wrong numer of tones got filtered out of the dataset.')	
+        print ('Wrong numer of tones got filtered out of the file', PathToDFile[-7:-3])	
         sys.exit(1)
 
-    in_data = {}
-    tonedata = {}
+    in_data = []
+    tonedata = []
 
     for j in arange(len(tonestart)) :
-        in_data[j] = rawd0[int(tonestart[j]-tbefore/dt):int(tonestart[j]+tduration/dt + tafter/dt+1)]
-        tonedata[j] = list(insert(header['tone_number_%03d' % j],0,j))
+        in_data.append({
+            "toneid": PathToDFile[-7:-3] + "_" + str(j),
+            "recording": rawd0[int(tonestart[j]-tbefore/dt):int(tonestart[j]+tduration/dt + tafter/dt+1)]})
+        
+        tone = header['tone_number_%03d' % j]
+        tonedata.append({
+            "toneid": PathToDFile[-7:-3] + "_" + str(j),
+            "frequency": tone[0],
+            "level": tone[1],
+            "else": list(tone[2:-1])})
 
     return in_data, tonedata
 
@@ -106,203 +117,199 @@ def read_in_data(path_to_dir: str, rec: list[int],
     the tones the responses, the other the tonedata. 
     
     """
-    batch_data = {}
-    batch_tonedata = {}
+    batch_data = []
+    batch_tonedata = []
 
+    error_files = []
     for i in arange(rec[0],rec[0]+rec[1]):
         NameOfDFile = i_to_name(i, "d")
         NameOfHFile = i_to_name(i, "h")
+
         try:
             data, tonedata = read_in_file(path_to_dir + NameOfDFile,
-                                          path_to_dir + NameOfHFile,
-                                          datachannel, triggerchannel)
+                                            path_to_dir + NameOfHFile,
+                                            datachannel, triggerchannel)
+            batch_data += data
+            batch_tonedata += tonedata
+        
         except:
-            print('Could not find ', NameOfDFile, ' in ' + path_to_dir + ', exit.')
-            sys.exit(1)
-
-        batch_data[NameOfDFile] = data
-        batch_tonedata[NameOfHFile] = tonedata
+            print('Error in file', NameOfDFile[0:4], ' in ' + path_to_dir[-7:] + ', pass.')
+            error_files.append(NameOfDFile[0:4])
+            pass
     
-    return pd.DataFrame(batch_data), pd.DataFrame(batch_tonedata)
+
+    data_df = pd.DataFrame(batch_data, columns=["toneid", "recording"])
+    tonedata_df = pd.DataFrame(batch_tonedata, columns=["toneid", "frequency", "level", "else"])
+
+    return data_df, tonedata_df, error_files
 
 
-def get_fig_size(tonedata: pd.DataFrame):
+def fra(average_activity: pd.DataFrame,
+        metric: Callable):
     """
-    To deprecate 
-    """
-    return (40,20)
-
-def activity(filename: str, data: pd.DataFrame, tonedata: pd.DataFrame,
-             metric,
-             title = None, show = False, sort = False):
-    """
-    Calculates the activity matrix of a recording. Each cell is the neural activity
+    Calculates the FRA (frequency-response-area) of a recording. Each cell is the neural activity
     in response to a tone of a specified sound pressure level and frequency.
 
     Parameters:
 
-    filename (str): 
-    data (pd.DataFrame): the responses to the tones
-    tonedata (pd.DataFrame): the tones spl and frequency
-    show (bool): if true displays the matrix
-    title (str): name to save the figures
-    sort (bool): to deprecate
+    data (pd.DataFrame): TODO
+    metric (function): TODO
 
     Returns 
     
     """
-    
-    NameOfDFile = i_to_name(filename, "d")
-    NameOfHFile = i_to_name(filename, "h")
-   
-    try:
-        tonedata = pd.DataFrame(tonedata[NameOfHFile].to_list(), columns=['Index','Frequency','Intensity','tbc'])
-    except:
-        tonedata = pd.DataFrame(tonedata[NameOfHFile].to_list(), columns=['Index','Frequency','Intensity','tbc', 'Rise Time'])
 
-    tonedata = tonedata.sort_values(by=['Intensity', 'Frequency'], ascending=[False, True])
-    data = data[NameOfDFile]
-
-    spls = tonedata['Intensity'].unique()
-    freq = tonedata['Frequency'].unique()
-
-    n_freq = len(freq)
+    spls = average_activity['level'].unique()
+    freq = average_activity['frequency'].unique()
     n_spls = len(spls)
+    n_freq = len(freq)
 
-    am = np.empty((len(spls), len(freq)), dtype=float)
-    am_dict = []
-    for i, (index, row) in enumerate(tonedata.iterrows()):
+    matrix = np.empty((len(spls), len(freq)), dtype=float)
+    for i, (index, row) in enumerate(average_activity.iterrows()):
+        matrix[i // n_freq, i % n_freq] = row['activity'] # row['level'] + row['frequency'] / 1000
 
-        A = metric(arr = data[row['Index']],
-                   window = [int(tbefore), int(tbefore + tduration)] )
-        
-        am[i // n_freq, i % n_freq] = A
-        am_dict.append({'Activity': A,
-                        'Intensity': row['Intensity'],
-                        'Frequency': row['Frequency']})
-
-    if show:
-        plt.figure(figsize=(12, 6))
-        plt.imshow(am, cmap='viridis', aspect='auto') 
-        plt.colorbar(label='Variance')  
-        plt.title("Variance " + title)
-        plt.xlabel("Frequency kHz")
-        plt.ylabel("SPL dB")
-        plt.xticks(ticks=np.arange(len(freq)), labels=np.round(freq/1000,1))
-        plt.yticks(ticks=np.arange(len(spls)), labels=spls)
-        plt.savefig('outputs/' + title + "_mv.pdf")
+    filtered_matrix = ndimage.median_filter(matrix, size = 3, mode='reflect')
+    activity_frequency = np.sum(filtered_matrix, axis = 0)
+    activity_level = np.sum(filtered_matrix, axis = 1)
+    step = (max(activity_frequency) - min(activity_frequency)) / n_spls
+    best_frequency = freq[np.argmax(activity_frequency)]
     
-    return pd.DataFrame(am_dict, columns=['Activity', 'Intensity', 'Frequency'])
+    activity_level = np.flip(activity_level)
+    sod_activity_level = activity_level[0:-2] - 2 * activity_level[1:-1] + activity_level[2:]
+    if max(sod_activity_level) < 1: # to accept min dB this value has to be tested
+        maximum_curvature_level = 0
+    else:
+        maximum_curvature_level = np.argmax(sod_activity_level) + 1
+    level_threshold = spls[-(1 + maximum_curvature_level)]
 
+    boundary = np.zeros(n_freq)
+    for n, activity in enumerate(activity_frequency):
+        for i in range(n_spls):
+            if i * step <= activity - min(activity_frequency) <= (i + 1) * step:
+                if i - maximum_curvature_level < 0:
+                    boundary[n] = 1e9
+                else:
+                    boundary[n] = spls[i - maximum_curvature_level]
+                break
 
-    # seg_am = np.zeros((len(spls), len(freq)), dtype=float)
-    # seg_am[am > 0.9 * np.mean(am)] = 1 # Binary segmentation
+    # Calculate d'
+    tone_driven_activity = []
+    tone_unrelated_activity = [] 
+    for i, spl in enumerate(boundary): # each i i.e freq is a column in the matrix
+        column = matrix[:, i] # get the column
+        if spl == 1e9:
+            tone_unrelated_activity.extend(column)
+        else:
+            index = np.where(spls == spl)[0][0] # the tone_driven goes from 0 to spl
+            tone_driven_activity.extend(column[0:index+1])
+            tone_unrelated_activity.extend(column[index+1:])
+    d_prime = (np.mean(tone_driven_activity) - np.mean(tone_unrelated_activity)) / np.std(matrix)
 
-    # kernel = np.ones((2,1),np.uint8)
-    # seg_am_open = cv.morphologyEx(seg_am, cv.MORPH_OPEN, kernel, borderValue = 0)
-    # show = False
-    # if sum(sum(seg_am_open)) > 2 * n_spls:
-    #     show = True
-    # seg_am[seg_am_open == 1] = 2
+    # print(boundary)
+    # result = np.concatenate([
+    #     np.array([0]),  # Padding at the beginning
+    #     sod_activity_level,  # Second derivative
+    #     np.array([0])   # Padding at the end
+    # ])
 
-    # target = [n_spls - 1, 2]
-    # if sort:
-    #     show = False
-    #     for i in range(n_spls - (target[0] - 1)):
-    #         for j in range(n_freq - (target[1] - 1)):
+    # plt.figure()
+    # plt.plot(activity_level)
+    # plt.plot(result, color='red')
+    # plt.show()
 
-    #             if np.array_equal(seg_am[i:i+target[0], j:j+target[1]], np.ones((target[0], target[1]), dtype=int)):
-    #                 seg_am[i:i+target[0], j:j+target[1]] = 2    
-    #                 show = True
-    #                 break
+    fra_summary = pd.DataFrame([{'d prime': d_prime, 'best frequency': best_frequency, 'level threshold': level_threshold}])
+    return fra_summary, matrix, boundary
 
-    # plt.figure(figsize=(12, 6))
-    # plt.imshow(seg_am, cmap='viridis', aspect='auto') 
-    # plt.colorbar(label='Class')  
-    # plt.title("Segmented Variance" + title)
-    # plt.xlabel("Frequency kHz")
-    # plt.ylabel("SPL dB")
-    # plt.xticks(ticks=np.arange(len(freq)), labels=np.round(freq/1000,1))
-    # plt.yticks(ticks=np.arange(len(spls)), labels=spls)
-    # plt.savefig('outputs/' + title + "_mv_bin.pdf")
+def plot_dashboard(data: pd.DataFrame,
+                   metric: Callable,
+                   filename: str): 
 
+    fig = plt.figure(figsize=(18, 9))
+    outer_grid = gridspec.GridSpec(1, 2, width_ratios=[3,2])
+    
+    # COMMON
+    df = data[['toneid', 'recording', 'frequency', 'level']]
+    df['activity'] = df['recording'].apply(lambda x: metric(arr = x, window = [int(tbefore/dt), int(tbefore/dt + tduration/dt)]))
+    average_activity = df.groupby(['frequency', 'level'])['activity'].mean().reset_index()
 
-def raw_data_plot(file: int, data: pd.DataFrame, tonedata: pd.DataFrame, title: str):
-    """
-    Plot the traces of activity for an experiment.
+    average_activity = average_activity.sort_values(by=['level', 'frequency'], ascending=[False, True])
+    df = df.sort_values(by=['level', 'frequency'], ascending=[False, True])
 
-    Parameters
+    spls = df['level'].unique()
+    freq = df['frequency'].unique()
 
-    file (int): Number of file in the directory of experiments.
-    data (pd.DataFrame): the responses to the tones
-    tonedata (pd.DataFrame): the tones spl and frequency
-    title (str): name to save the figures
-    """
+    # FRA plot
+    fra_summary, matrix, boundary = fra(average_activity, metric)
 
-    NameOfDFile = i_to_name(file, "d")
-    NameOfHFile = i_to_name(file, "h")
-   
-    rise_time = False
-    try:
-        tonedata = pd.DataFrame(tonedata[NameOfHFile].to_list(), columns=['Index','Frequency','Intensity','tbc'])
-    except:
-        tonedata = pd.DataFrame(tonedata[NameOfHFile].to_list(), columns=['Index','Frequency','Intensity','tbc', 'Rise Time'])
-        rise_time = True
+    ax1 = fig.add_subplot(outer_grid[0])
+    ax1.imshow(matrix, cmap='inferno', aspect='auto')
+    # ax1.colorbar(im, ax=ax, label='Activity')
+    ax1.set_title("FRA")
+    ax1.set_xlabel("Frequency (kHz)")
+    ax1.set_ylabel("SPL (dB)")
+    ax1.set_xticks(np.arange(len(freq)))
+    ax1.set_xticklabels(np.round(freq / 1000, 1))
+    ax1.set_yticks(np.arange(len(spls)))
+    ax1.set_yticklabels(spls)
+    for i in range(len(boundary) - 1):
+        x_start, x_end = i - 0.5, i + 0.5
 
-    tonedata = tonedata.sort_values(by=['Intensity', 'Frequency'], ascending=[False, True])
-    data = data[NameOfDFile]
+        if boundary[i] == 1e9:
+            y_start = - 0.5
+        else:
+            y_start = np.where(spls == boundary[i])[0][0] + 0.5
+        if boundary[i + 1] == 1e9:
+            y_end = -0.5
+        else:
+            y_end = np.where(spls == boundary[i + 1])[0][0] + 0.5
 
-    time = arange(-tbefore,tduration+tafter+dt,dt)
-    spls = len(tonedata['Intensity'].unique())
-    freq = len(tonedata['Frequency'].unique())
+        if boundary[i] != boundary[i + 1]:
+            vertical_line = mlines.Line2D([x_end, x_end], [y_start, y_end], color="white", linewidth=3)
+            ax1.add_line(vertical_line)
+
+        horizontal_line = mlines.Line2D([x_start, x_end], [y_start, y_start], color="white", linewidth=3)
+        ax1.add_line(horizontal_line)
+
+    if boundary[-1] == 1e9:
+        y_start = - 0.5
+    else:
+        y_start = np.where(spls == boundary[-1])[0][0] + 0.5
+
+    # Best recordings plot
+    inner_grid = gridspec.GridSpecFromSubplotSpec(len(spls), 1, subplot_spec=outer_grid[1], hspace=0.4, wspace=0.3)
+
+    best_frequency = fra_summary['best frequency'].iloc[0]
+    best_frequency_recordings = df[df['frequency'] == best_frequency]
+    best_frequency_recordings = best_frequency_recordings.sort_values(by=['level', 'frequency'], ascending=[False, True])
+    time_range = arange(-tbefore,tduration+tafter+dt,dt)
 
     # Get the range of the activity y-axis. 
-    maximum = -100.
-    minimum = +100.
-    for arr in data:
-        if maximum < max(arr):
-            maximum = max(arr)
-        if minimum > min(arr):
-            minimum = min(arr)
+    y_maximum = -100.
+    y_minimum = +100.
+    for arr in best_frequency_recordings['recording']:
+        if y_maximum < max(arr):
+            y_maximum = max(arr)
+        if y_minimum > min(arr):
+            y_minimum = min(arr)
 
-    min_spl = min(tonedata['Intensity'])
-    min_frq = min(tonedata['Frequency'])
+    min_spl = min(df['level'])
 
-    fig = plt.figure(figsize=get_fig_size(tonedata))  
+    for i, (index, row) in enumerate(best_frequency_recordings.iterrows()):
+        ax = fig.add_subplot(inner_grid[i, 0])
+        ax.plot(time_range, row['recording'] / 1.0)
 
-    for arr in data:
-        if len(arr) != len(time):
-            print("error")
-            sys.exit(1)
-
-    for i, (index, row) in enumerate(tonedata.iterrows()):
-        ax = plt.subplot(spls, freq, i + 1)
-        ax.plot(time, data[int(row['Index'])] / 1.0)
-
-        # Set x-axis and y-axis limits, and ticks
-        ax.set_ylim(minimum, maximum)
-        ax.set_xlim(time[0], time[-1])
-        ax.set_xticks(range(int(time[0]), int(time[-1]), 20))
+        ax.set_ylim(y_minimum, y_maximum)
+        ax.set_xlim(time_range[0], time_range[-1])
+        ax.set_xticks(range(int(time_range[0]), int(time_range[-1]), 20))
         ax.tick_params(axis='x', labelsize=6, pad=10)
         ax.tick_params(axis='y', pad=10)
 
         # Add vertical lines at stimulus
         ax.axvline(x=0, ls='--', color='0.4', linewidth=0.8)
         ax.axvline(x=tduration, ls='--', color='0.4', linewidth=0.8)
-        if rise_time:
-            ax.axvspan(0, row['Rise Time'], color=(0.6, 0.8, 1, 0.4))
-
-        # Show y-axis label and add y-axis line only if this is the leftmost column
-        if row["Frequency"] == min_frq:
-            ax.set_ylabel(f'Intensity: {int(round(row["Intensity"], 0))} dB')
-            ax.axvline(0, color='black', linewidth=0.5)  # y-axis line
-        else:
-            ax.get_yaxis().set_visible(False)
-
-        # Show x-axis label and add x-axis line only if this is the bottom row
-        if row["Intensity"] == min_spl:
-            ax.set_xlabel(f'time (ms) \n{int(round(row["Frequency"], 0))} Hz')
-            ax.axhline(0, color='black', linewidth=0.5)  # x-axis line
+        ax.set_ylabel(f'{round(row['level'], 2)} dB')
+        if row['level'] == min_spl:
+            ax.set_xlabel(f'time (ms) \n{round(row['level'], 0)} Hz')
         else:
             ax.get_xaxis().set_visible(False)
 
@@ -312,8 +319,26 @@ def raw_data_plot(file: int, data: pd.DataFrame, tonedata: pd.DataFrame, title: 
         ax.spines['left'].set_visible(False)
         ax.spines['bottom'].set_visible(False)
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05, wspace=0.5, hspace=0.5)
-    plt.suptitle(title, ha='center', va='top', fontsize=11, y=0.98)
-    plt.savefig('outputs/' + title + "_r.pdf")
-    plt.close()
+    summary_text = f"""
+    d': {fra_summary['d prime'].iloc[0]:.2f}
+    Best Frequency: {fra_summary['best frequency'].iloc[0] / 1000:.1f} kHz
+    Level Threshold: {fra_summary['level threshold'].iloc[0]} dB
+    Min voltage: {y_minimum:.1f} V
+    Max voltage: {y_maximum:.1f} V    
+    """
+    fig.text(
+        0.5, 0.06,  # Adjusted vertical position for better visibility
+        summary_text.strip(),
+        ha='center',
+        va='center',
+        fontsize=10,
+    )
 
+    # Adjust spacing between main plots
+    fig.subplots_adjust(wspace=0.3, hspace=0.3, top=0.95, bottom=0.2)
+    fig.suptitle(filename, fontsize=12, ha='center')
+    fig.subplots_adjust(top=0.92)
+
+    return [round(fra_summary['d prime'].iloc[0],2),
+            round(fra_summary['best frequency'].iloc[0],2),
+            round(fra_summary['level threshold'].iloc[0],2)], fig
