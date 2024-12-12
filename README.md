@@ -7,6 +7,7 @@ Pere Cornellà - 12/12/2024
 4. Install the packages ```pip3 install -r ./config/requirements.txt``` (change pip3 to your downloader).
 5. Create a *metadata* folder.
 6. Insert your root directory in *crawl.py* and run it to retreieve information about the child directories and store it in *dir_info.csv*.
+7. Insert your root directory in *enrich_dataset.py*.
    
    ⚠️ Running this twice will erase your progress.
 
