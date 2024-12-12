@@ -35,6 +35,6 @@ And values the user can modify
  - Healthy (Yes / No)
  - Type (Intracellular / Extracellular)
  - Relative coordinates (x,y,z)
- - 
+   
 Except for the relative coordinates it will also store whether the user agrees with the suggested values.
 
