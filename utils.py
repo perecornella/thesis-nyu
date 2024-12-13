@@ -1,19 +1,14 @@
-from numpy import arange, array, concatenate, insert
-from matplotlib.backends.backend_pdf import PdfPages
-import matplotlib.lines as mlines
-from scipy import ndimage
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
-import cv2 as cv
-import pickle
 import sys
-import time
-import signal
-
+import pickle
+import numpy as np
+import pandas as pd
+from scipy import ndimage
+import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 from typing import Tuple, Callable
-
+import matplotlib.gridspec as gridspec
+from matplotlib.backends.backend_pdf import PdfPages
+from numpy import arange, array, concatenate, insert
 
 tbefore = 20.
 tafter = 100.
@@ -21,13 +16,11 @@ tduration = 50.
 rate = 10000
 dt = 1000./rate
 
-
 def i_to_name(i, mode):
     if mode == "d":
         return 'A%03dd.p' % i
     elif mode == "h":
         return 'A%03dh.p' % i 
-
 
 def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerchannel: str) -> Tuple[dict, dict]:
     """
@@ -98,7 +91,6 @@ def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
 
     return in_data, tonedata
 
-
 def read_in_data(path_to_dir: str, rec: list[int],
                  datachannel: str, triggerchannel: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -142,7 +134,6 @@ def read_in_data(path_to_dir: str, rec: list[int],
     tonedata_df = pd.DataFrame(batch_tonedata, columns=["toneid", "frequency", "level", "else"])
 
     return data_df, tonedata_df, error_files
-
 
 def fra(average_activity: pd.DataFrame,
         metric: Callable):
@@ -220,7 +211,7 @@ def fra(average_activity: pd.DataFrame,
     fra_summary = pd.DataFrame([{'d prime': d_prime, 'best frequency': best_frequency, 'level threshold': level_threshold}])
     return fra_summary, matrix, boundary
 
-def plot_dashboard(data: pd.DataFrame,
+def fra_dashboard(data: pd.DataFrame,
                    metric: Callable,
                    filename: str): 
 
@@ -342,3 +333,73 @@ def plot_dashboard(data: pd.DataFrame,
     return [round(fra_summary['d prime'].iloc[0],2),
             round(fra_summary['best frequency'].iloc[0],2),
             round(fra_summary['level threshold'].iloc[0],2)], fig
+
+def all_traces(data: pd.DataFrame,
+               filename: str):
+    """
+    """
+
+    data = data.sort_values(by=['level', 'frequency'], ascending=[False, True])
+    time_range = arange(-tbefore,tduration+tafter+dt,dt)
+    spls = len(data['level'].unique())
+    freq = len(data['frequency'].unique())
+
+    # Get the range of the activity y-axis. 
+    maximum = -100.
+    minimum = +100.
+    for arr in data['recording']:
+        if maximum < max(arr):
+            maximum = max(arr)
+        if minimum > min(arr):
+            minimum = min(arr)
+
+    min_spl = min(data['level'])
+    min_frq = min(data['frequency'])
+
+    fig = plt.figure(figsize=(16,8))  
+
+    for arr in data['recording']:
+        if len(arr) != len(time_range):
+            print("error")
+            sys.exit(1)
+
+    for i, (index, row) in enumerate(data.iterrows()):
+        ax = plt.subplot(spls, freq, i + 1)
+        ax.plot(time_range, row['recording'] / 1.0)
+
+        # Set x-axis and y-axis limits, and ticks
+        ax.set_ylim(minimum, maximum)
+        ax.set_xlim(time_range[0], time_range[-1])
+        ax.set_xticks(range(int(time_range[0]), int(time_range[-1]), 20))
+        ax.tick_params(axis='x', labelsize=6, pad=10)
+        ax.tick_params(axis='y', pad=10)
+
+        # Add vertical lines at stimulus
+        ax.axvline(x=0, ls='--', color='0.4', linewidth=0.8)
+        ax.axvline(x=tduration, ls='--', color='0.4', linewidth=0.8)
+
+        # Show y-axis label and add y-axis line only if this is the leftmost column
+        if row["frequency"] == min_frq:
+            ax.set_ylabel(f'{int(round(row["level"], 0))} dB')
+            ax.axvline(0, color='black', linewidth=0.5)  # y-axis line
+        else:
+            ax.get_yaxis().set_visible(False)
+
+        # Show x-axis label and add x-axis line only if this is the bottom row
+        if row["level"] == min_spl:
+            ax.set_xlabel(f'time (ms) \n{int(round(row["frequency"], 0))} Hz')
+            ax.axhline(0, color='black', linewidth=0.5)  # x-axis line
+        else:
+            ax.get_xaxis().set_visible(False)
+
+        # Remove all box borders
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05, wspace=0.5, hspace=0.5)
+    plt.suptitle(filename, ha='center', va='top', fontsize=12, y=0.98)
+    fig.tight_layout(rect=[0, 0.05, 1, 1])  
+
+    return fig

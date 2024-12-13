@@ -1,36 +1,43 @@
 import sys
-import matplotlib.pyplot as plt
 import pandas as pd
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QRadioButton, QHBoxLayout, QLineEdit, QLabel, QComboBox, QMessageBox, QButtonGroup
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from utils import plot_dashboard, read_in_data
-from metrics import lacking_name
 from datetime import datetime
+import matplotlib.pyplot as plt
+from metrics import lacking_name
+from utils import fra_dashboard, read_in_data, all_traces
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QRadioButton,
+                              QHBoxLayout, QLineEdit, QLabel, QComboBox, QMessageBox, QButtonGroup)
 
 class Canvas(FigureCanvas):
+
     def __init__(self, parent, sample, filename):
         # Create the figure using the plot_dashboard function
-        fra_summary, fig = plot_dashboard(sample, metric=lacking_name, filename=filename)
+        fra_summary, fig = fra_dashboard(sample, metric=lacking_name, filename=filename)
         parent.d = fra_summary[0]
         parent.bf = fra_summary[1]
         parent.th = fra_summary[2]
+        if parent.visualization == "traces":
+            fig = all_traces(sample, filename=filename)
         super().__init__(fig)  # Pass the figure to the FigureCanvas constructor
         self.setParent(parent)  # Set the parent for the canvas
 
-
 class AppDemo(QWidget):
+
     def __init__(self, input_directory=None, input_file=None):
 
         super().__init__()
 
         self.input_directory = input_directory
         self.input_file = input_file
+        self.datachannel = "di0P"
+        self.triggerchannel = "di4P"
+        self.visualization = "fra"
 
+        self.batch_size = 10
         self.set_directory()
-        self.load_data_on_checkpoint()
+        self.load_data_on_checkpoint(channel_change=False)
         self.create_widgets()
         self.set_layout()
-
 
     def set_directory(self):
 
@@ -45,7 +52,7 @@ class AppDemo(QWidget):
         if all_done:
             print("All directories have been processed.")
             dir_info.to_csv('metadata/dir_info.csv')
-            metadata.to_csv(f'metadata/{datachannel}.csv')
+            metadata.to_csv(f'metadata/{self.datachannel}.csv')
             sys.exit(1)
 
         if self.input_directory is not None:
@@ -58,17 +65,17 @@ class AppDemo(QWidget):
                 print("There's something wrong with the directory specified.")
                 sys.exit(1)
         
-        self.batch_size = 10  # this is a parameter
         self.number_of_batches = (self.end - self.checkpoint) // self.batch_size
         self.batch_pointer = 0
         self.counter = 0
 
-    def load_data_on_checkpoint(self):
+    def load_data_on_checkpoint(self, channel_change = False):
 
         all_error = True
         while self.batch_pointer < self.number_of_batches:
 
-            if self.counter == 0:
+            if self.counter == 0 or channel_change:
+                
                 if self.input_file is not None:
                     batch = [int(self.input_file[1:]), 1]
                 else:
@@ -77,9 +84,9 @@ class AppDemo(QWidget):
                     else:
                         batch = [self.checkpoint, self.end]
 
-                self.data, self.tonedata, self.error_files = read_in_data(root_dir + self.dir, batch, datachannel, triggerchannel)
+                self.data, self.tonedata, self.error_files = read_in_data(root_dir + self.dir, batch, self.datachannel, self.triggerchannel)
                 self.df = pd.merge(self.data, self.tonedata, how="left", on="toneid")
-                    
+                
                 if len(self.error_files) - (batch[1] - batch[0]) == 0:  # All files are error
                     self.batch_pointer += 1
                     self.checkpoint += batch[1] - batch[0]
@@ -87,17 +94,18 @@ class AppDemo(QWidget):
                     break
                 else:
                     self.counter = (batch[1] - batch[0]) - len(self.error_files)
+                    channel_change = False
             
             else:
                 if self.input_file is not None:
                     self.sample = self.df[self.df["toneid"].str.startswith(self.input_file)]
-                    self.filename = f"{self.dir}{self.input_file} channel {datachannel}"
+                    self.filename = f"{self.dir}{self.input_file} channel {self.datachannel}"
                     all_error = False
                 else:
                     while self.checkpoint < self.end:
                         if f"A{self.checkpoint:03d}" not in self.error_files:
                             self.sample = self.df[self.df["toneid"].str.startswith(f"A{self.checkpoint:03d}")]
-                            self.filename = f"{self.dir}A{self.checkpoint:03d} channel {datachannel}"
+                            self.filename = f"{self.dir}A{self.checkpoint:03d} channel {self.datachannel}"
                             all_error = False
                             self.counter -= 1
                             break
@@ -112,7 +120,7 @@ class AppDemo(QWidget):
         if all_error:
             print(f"All the remaining non-error files in {self.dir} have been processed.")
             dir_info.to_csv('metadata/dir_info.csv')
-            metadata.to_csv(f'metadata/{datachannel}.csv')
+            metadata.to_csv(f'metadata/{self.datachannel}.csv')
             sys.exit(1)
 
     def create_widgets(self):
@@ -123,6 +131,7 @@ class AppDemo(QWidget):
         self.visualization_layout = QHBoxLayout()
         self.visualization_layout.addWidget(QLabel("Visualization"))
         self.visualization_layout.addWidget(self.visualization_combobox)
+        self.visualization_combobox.currentIndexChanged.connect(self.on_vis_selected)
 
         # Channel 0 or 2 question for Channel
         self.channel_combobox = QComboBox()
@@ -130,6 +139,8 @@ class AppDemo(QWidget):
         self.channel_layout = QHBoxLayout()
         self.channel_layout.addWidget(QLabel("Channel"))
         self.channel_layout.addWidget(self.channel_combobox)
+        self.channel_combobox.currentIndexChanged.connect(self.on_channel_selected)
+
 
         # Tuned button
         self.tuned_button_group = QButtonGroup(self)
@@ -200,7 +211,6 @@ class AppDemo(QWidget):
     def set_layout(self):
 
         self.layout = QVBoxLayout()
-
         self.layout.addLayout(self.visualization_layout)
         self.layout.addLayout(self.channel_layout)
         self.chart = Canvas(self, self.sample, self.filename)
@@ -214,7 +224,7 @@ class AppDemo(QWidget):
     
         self.setLayout(self.layout)
 
-# Action functions
+    # Action functions
 
     def on_send_clicked(self):
         if self.input_file is not None:
@@ -260,18 +270,35 @@ class AppDemo(QWidget):
 
                 metadata.loc[len(metadata)] = new_row
                 self.checkpoint += 1
-                self.load_data_on_checkpoint()
+                self.load_data_on_checkpoint(channel_change=False)
                 self.update_dashboard()
 
             else:
                 print("Submission cancelled.")
+
+    def on_vis_selected(self, index):
+        if self.visualization_combobox.itemText(index) == "FRA":
+            self.visualization = "fra"
+        elif self.visualization_combobox.itemText(index) == "Traces":
+            self.visualization = "traces"
+
+        self.update_dashboard()
+
+    def on_channel_selected(self, index):
+        if self.channel_combobox.itemText(index) == "Channel 0":
+            self.datachannel = "di0P"
+        elif self.channel_combobox.itemText(index) == "Channel 2":
+            self.datachannel = "di2P"
+
+        self.load_data_on_checkpoint(channel_change=True)
+        self.update_dashboard()
 
     def update_dashboard(self):
         plt.close(self.chart.figure)
         self.layout.removeWidget(self.chart)
         self.chart.deleteLater()
         self.chart = Canvas(self, self.sample, self.filename)
-        self.layout.insertWidget(0, self.chart)
+        self.layout.insertWidget(2, self.chart)
 
     def closeEvent(self, event):
         question = QMessageBox.question(self, 'Confirm Exit',
@@ -281,7 +308,7 @@ class AppDemo(QWidget):
 
         if question == QMessageBox.Yes:
             dir_info.to_csv('metadata/dir_info.csv')
-            metadata.to_csv(f'metadata/{datachannel}.csv')
+            metadata.to_csv(f'metadata/{self.datachannel}.csv')
             event.accept()  # Close the window
         elif question == QMessageBox.No:
             event.accept()
@@ -292,15 +319,14 @@ class AppDemo(QWidget):
 if __name__ == "__main__":
     
     # Define the data and parameters
-    datachannel = 'di0P'
-    triggerchannel = 'di4P'
     root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
     dir_info = pd.read_csv('metadata/dir_info.csv')
 
     try:
         metadata = pd.read_csv('metadata/{datachannel}.csv')
     except:
-        metadata = pd.DataFrame(columns=['directory', 'filename', 'tuned', 'clear', 'healthy', 'type', 'x', 'y', 'z', 'd', 'bf', 'th', 'entrydate'])
+        metadata = pd.DataFrame(columns=['directory', 'filename', 'tuned', 'clear', 'healthy',
+                                          'type', 'x', 'y', 'z', 'd', 'bf', 'th', 'entrydate'])
 
     app = QApplication(sys.argv)
     
