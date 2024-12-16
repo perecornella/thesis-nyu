@@ -381,14 +381,12 @@ def all_traces(data: pd.DataFrame,
         # Show y-axis label and add y-axis line only if this is the leftmost column
         if row["frequency"] == min_frq:
             ax.set_ylabel(f'{int(round(row["level"], 0))} dB')
-            ax.axvline(0, color='black', linewidth=0.5)  # y-axis line
         else:
             ax.get_yaxis().set_visible(False)
 
         # Show x-axis label and add x-axis line only if this is the bottom row
         if row["level"] == min_spl:
             ax.set_xlabel(f'time (ms) \n{int(round(row["frequency"], 0))} Hz')
-            ax.axhline(0, color='black', linewidth=0.5)  # x-axis line
         else:
             ax.get_xaxis().set_visible(False)
 
