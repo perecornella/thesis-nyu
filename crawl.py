@@ -3,8 +3,19 @@ import os
 import pandas as pd
 import numpy as np
 import time
+import sys
 
-root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
+
+user = sys.argv[1]
+if user == "perecornella":
+    root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
+elif user == "alex":
+    root_dir = ""
+else:
+    user = "demo"
+    print('Demo user not set up.')
+    sys.exit(1)
+
 list_dir = []
 for dir in os.listdir(root_dir):
     if dir == 'in_vivo_data_pw':
@@ -44,5 +55,9 @@ for dir in list_dir:
     dir_info = dir_info._append(info, ignore_index = True)
 
 measure2 = time.time()
-print('Elapsed time', measure2 - measure1)
-dir_info.to_csv('new_dir_info.csv', index=False)
+print('Your dataset was crawled in', round(measure2 - measure1,2), 'seconds.')
+
+if not os.path.exists(f'./metadata/{user}'):
+    os.makedirs(f'./metadata/{user}')
+
+dir_info.to_csv(f'./metadata/{user}/progress.csv', index=False)

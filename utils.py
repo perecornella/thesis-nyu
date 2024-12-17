@@ -8,6 +8,7 @@ import matplotlib.lines as mlines
 from typing import Tuple, Callable
 import matplotlib.gridspec as gridspec
 from matplotlib.backends.backend_pdf import PdfPages
+from metrics import lacking_name
 from numpy import arange, array, concatenate, insert
 
 tbefore = 20.
@@ -135,8 +136,7 @@ def read_in_data(path_to_dir: str, rec: list[int],
 
     return data_df, tonedata_df, error_files
 
-def fra(average_activity: pd.DataFrame,
-        metric: Callable):
+def fra(average_activity: pd.DataFrame):
     """
     Calculates the FRA (frequency-response-area) of a recording. Each cell is the neural activity
     in response to a tone of a specified sound pressure level and frequency.
@@ -212,26 +212,34 @@ def fra(average_activity: pd.DataFrame,
     return fra_summary, matrix, boundary
 
 def fra_dashboard(data: pd.DataFrame,
-                   metric: Callable,
                    filename: str): 
 
     fig = plt.figure(figsize=(18, 9))
     outer_grid = gridspec.GridSpec(1, 2, width_ratios=[3,2])
     
-    # COMMON
+    # 
+
+    metric = lacking_name
     df = data[['toneid', 'recording', 'frequency', 'level']]
     df['activity'] = df['recording'].apply(lambda x: metric(arr = x, window = [int(tbefore/dt), int(tbefore/dt + tduration/dt)]))
+    
     average_activity = df.groupby(['frequency', 'level'])['activity'].mean().reset_index()
-
     average_activity = average_activity.sort_values(by=['level', 'frequency'], ascending=[False, True])
-    df = df.sort_values(by=['level', 'frequency'], ascending=[False, True])
+    fra_summary, matrix, boundary = fra(average_activity)
 
+    # average_activity2 = df.groupby(['frequency', 'level'])['activity'].mean().reset_index()
+    # average_activity2 = average_activity2.sort_values(by=['level', 'frequency'], ascending=[False, True])
+    # fra_summary3, matrix3, boundary3 = fra(average_activity2, metric = )
+
+    # average_activity3 = df.groupby(['frequency', 'level'])['activity'].mean().reset_index()
+    # average_activity3 = average_activity3.sort_values(by=['level', 'frequency'], ascending=[False, True])
+    # fra_summary3, matrix3, boundary3 = fra(average_activity3, metric = )
+
+    df = df.sort_values(by=['level', 'frequency'], ascending=[False, True])
     spls = df['level'].unique()
     freq = df['frequency'].unique()
 
     # FRA plot
-    fra_summary, matrix, boundary = fra(average_activity, metric)
-
     ax1 = fig.add_subplot(outer_grid[0])
     ax1.imshow(matrix, cmap='inferno', aspect='auto')
     # ax1.colorbar(im, ax=ax, label='Activity')
@@ -326,9 +334,9 @@ def fra_dashboard(data: pd.DataFrame,
     )
 
     # Adjust spacing between main plots
-    fig.subplots_adjust(wspace=0.3, hspace=0.3, top=0.95, bottom=0.2)
     fig.suptitle(filename, fontsize=12, ha='center')
-    fig.subplots_adjust(top=0.92)
+    fig.subplots_adjust(wspace=0.3, hspace=0.3, top=0.92, bottom=0.2)
+ 
 
     return [round(fra_summary['d prime'].iloc[0],2),
             round(fra_summary['best frequency'].iloc[0],2),

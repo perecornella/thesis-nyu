@@ -1,2 +1,4 @@
-metadata
 outputs
+metadata
+venv
+__pycache__

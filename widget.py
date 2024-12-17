@@ -2,7 +2,6 @@ import sys
 import pandas as pd
 from datetime import datetime
 import matplotlib.pyplot as plt
-from metrics import lacking_name
 from utils import fra_dashboard, read_in_data, all_traces
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QRadioButton,
@@ -12,10 +11,7 @@ class Canvas(FigureCanvas):
 
     def __init__(self, parent, sample, filename):
         # Create the figure using the plot_dashboard function
-        fra_summary, fig = fra_dashboard(sample, metric=lacking_name, filename=filename)
-        parent.d = fra_summary[0]
-        parent.bf = fra_summary[1]
-        parent.th = fra_summary[2]
+        parent.fra_summaries, fig = fra_dashboard(sample, filename=filename)
         if parent.visualization == "traces":
             fig = all_traces(sample, filename=filename)
         super().__init__(fig)  # Pass the figure to the FigureCanvas constructor
@@ -32,6 +28,7 @@ class AppDemo(QWidget):
         self.datachannel = "di0P"
         self.triggerchannel = "di4P"
         self.visualization = "fra"
+        self.one_row_sent = False
 
         self.batch_size = 10
         self.set_directory()
@@ -42,7 +39,7 @@ class AppDemo(QWidget):
     def set_directory(self):
 
         all_done = True
-        for i, row in dir_info.iterrows():
+        for i, row in progress.iterrows():
             if row['end'] - row['checkpoint'] > 0:
                 self.checkpoint = row['checkpoint']
                 self.end = row['end']
@@ -51,13 +48,13 @@ class AppDemo(QWidget):
                 break
         if all_done:
             print("All directories have been processed.")
-            dir_info.to_csv('metadata/dir_info.csv')
-            metadata.to_csv(f'metadata/{self.datachannel}.csv')
+            progress.to_csv(f'metadata/{user}/progress.csv')
+            metadata.to_csv(f'metadata/{user}/results.csv')
             sys.exit(1)
 
         if self.input_directory is not None:
             try:
-                row = dir_info[dir_info['name'] == self.input_directory].iloc[0]
+                row = progress[progress['name'] == self.input_directory].iloc[0]
                 self.checkpoint = row['checkpoint']
                 self.end = row['end']
                 self.dir = row['name']
@@ -90,7 +87,7 @@ class AppDemo(QWidget):
                 if len(self.error_files) - (batch[1] - batch[0]) == 0:  # All files are error
                     self.batch_pointer += 1
                     self.checkpoint += batch[1] - batch[0]
-                    dir_info.loc[dir_info['name'] == self.dir, 'checkpoint'] = self.checkpoint
+                    progress.loc[progress['name'] == self.dir, 'checkpoint'] = self.checkpoint
                     break
                 else:
                     self.counter = (batch[1] - batch[0]) - len(self.error_files)
@@ -112,15 +109,15 @@ class AppDemo(QWidget):
                         else:
                             self.checkpoint += 1
                     
-                    dir_info.loc[dir_info['name'] == self.dir, 'checkpoint'] = self.checkpoint
+                    progress.loc[progress['name'] == self.dir, 'checkpoint'] = self.checkpoint
                     
                 if not all_error:
                     break
 
         if all_error:
             print(f"All the remaining non-error files in {self.dir} have been processed.")
-            dir_info.to_csv('metadata/dir_info.csv')
-            metadata.to_csv(f'metadata/{self.datachannel}.csv')
+            progress.to_csv(f'metadata/{user}/progress.csv')
+            metadata.to_csv(f'metadata/{user}/results.csv')
             sys.exit(1)
 
     def create_widgets(self):
@@ -140,7 +137,6 @@ class AppDemo(QWidget):
         self.channel_layout.addWidget(QLabel("Channel"))
         self.channel_layout.addWidget(self.channel_combobox)
         self.channel_combobox.currentIndexChanged.connect(self.on_channel_selected)
-
 
         # Tuned button
         self.tuned_button_group = QButtonGroup(self)
@@ -182,6 +178,13 @@ class AppDemo(QWidget):
         self.type_layout.addWidget(QLabel("Type"))
         self.type_layout.addWidget(self.type_combobox)
 
+        # Form layout
+        self.form_layout = QHBoxLayout()
+        self.form_layout.addLayout(self.tuned_layout)
+        self.form_layout.addLayout(self.clear_layout)
+        self.form_layout.addLayout(self.healthy_layout)
+        self.form_layout.addLayout(self.type_layout)
+
         # Coordinates input for x, y, z
         self.x0_input = QLineEdit()
         self.xf_input = QLineEdit()
@@ -195,10 +198,6 @@ class AppDemo(QWidget):
         self.coord_layout.addWidget(self.x0_input)
         self.coord_layout.addWidget(QLabel("xf:"))
         self.coord_layout.addWidget(self.xf_input)
-        self.coord_layout.addWidget(QLabel("i:"))
-        self.coord_layout.addWidget(self.i_input)
-        self.coord_layout.addWidget(QLabel("n:"))
-        self.coord_layout.addWidget(self.n_input)
         self.coord_layout.addWidget(QLabel("y:"))
         self.coord_layout.addWidget(self.y_input)
         self.coord_layout.addWidget(QLabel("z:"))
@@ -207,6 +206,13 @@ class AppDemo(QWidget):
         # Add Send button
         self.send_button = QPushButton("Send")
         self.send_button.clicked.connect(self.on_send_clicked)
+        self.next_button = QPushButton("Next")
+        self.next_button.clicked.connect(self.on_next_clicked)
+        # self.send_button.clicked.connect(self.on_send_clicked)
+        self.button_layout = QHBoxLayout()
+        self.button_layout.addWidget(self.send_button)
+        self.button_layout.addWidget(self.next_button)
+
 
     def set_layout(self):
 
@@ -215,12 +221,9 @@ class AppDemo(QWidget):
         self.layout.addLayout(self.channel_layout)
         self.chart = Canvas(self, self.sample, self.filename)
         self.layout.addWidget(self.chart)
-        self.layout.addLayout(self.tuned_layout)
-        self.layout.addLayout(self.clear_layout)
-        self.layout.addLayout(self.healthy_layout)
-        self.layout.addLayout(self.type_layout)
+        self.layout.addLayout(self.form_layout)
         self.layout.addLayout(self.coord_layout)
-        self.layout.addWidget(self.send_button)
+        self.layout.addLayout(self.button_layout)
     
         self.setLayout(self.layout)
 
@@ -237,17 +240,10 @@ class AppDemo(QWidget):
             selected_type = self.type_combobox.currentText()
             x0 = float(self.x0_input.text()) if self.x0_input.text() else None
             xf = float(self.xf_input.text()) if self.xf_input.text() else None
-            i = float(self.i_input.text()) if self.i_input.text() else None
-            n = float(self.n_input.text()) if self.n_input.text() else None
             y = float(self.y_input.text()) if self.y_input.text() else None
             z = float(self.z_input.text()) if self.z_input.text() else None
 
-            if None not in [x0, xf, i, n]:
-                x = x0 + i * (xf - x0) // n
-            else:
-                x = None
-
-            confirmation_message = f"Tuned: {tuned}\nClear: {clear}\nHealthy: {healthy}\nType: {selected_type}\nCoordinates: x={x0 + i * (xf - x0) // n}, y={y}, z={z}"
+            confirmation_message = f"Tuned: {tuned}\nClear: {clear}\nHealthy: {healthy}\nType: {selected_type}\nCoordinates: x={x0}, x={xf}, y={y}, z={z}"
             question = QMessageBox.question(self, 'Confirm your entries', f"Are you sure you want to submit the following values?\n\n{confirmation_message}", 
                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
@@ -255,26 +251,46 @@ class AppDemo(QWidget):
                 new_row = {
                     'directory': self.dir,
                     'filename': f"A{self.checkpoint:03d}",
+                    'channel': self.datachannel,
                     'tuned': tuned,
                     'clear': clear,
                     'healthy': healthy,
                     'type': selected_type,
-                    'x': x,
+                    'x': x0,
+                    'xf': xf,
                     'y': y,
                     'z': z,
-                    'd': self.d,
-                    'bf': self.bf,
-                    'th': self.th,
                     'entrydate': datetime.now()
                 }
-
+                self.one_row_sent = True
                 metadata.loc[len(metadata)] = new_row
                 self.checkpoint += 1
-                self.load_data_on_checkpoint(channel_change=False)
-                self.update_dashboard()
-
             else:
                 print("Submission cancelled.")
+
+    def on_next_clicked(self):
+        if self.one_row_sent == True:
+            question = QMessageBox.question(
+                self, 
+                "Confirmation",
+                "Do you want to pass to the next file?",
+                QMessageBox.Yes | QMessageBox.No,  
+                QMessageBox.No  
+            )
+            if question == QMessageBox.Yes:
+                self.load_data_on_checkpoint(channel_change=False)
+                self.update_dashboard()
+                self.one_row_sent = False
+            else:
+                print("Next button action cancelled.")
+        else:
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "You have to pass at least one file.",  
+                QMessageBox.Ok  
+            )
+
 
     def on_vis_selected(self, index):
         if self.visualization_combobox.itemText(index) == "FRA":
@@ -307,8 +323,8 @@ class AppDemo(QWidget):
                                     QMessageBox.Yes)
 
         if question == QMessageBox.Yes:
-            dir_info.to_csv('metadata/dir_info.csv')
-            metadata.to_csv(f'metadata/{self.datachannel}.csv')
+            progress.to_csv(f'metadata/{user}/progress.csv')
+            metadata.to_csv(f'metadata/{user}/results.csv')
             event.accept()  # Close the window
         elif question == QMessageBox.No:
             event.accept()
@@ -319,21 +335,31 @@ class AppDemo(QWidget):
 if __name__ == "__main__":
     
     # Define the data and parameters
-    root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
-    dir_info = pd.read_csv('metadata/dir_info.csv')
+    user = sys.argv[1]
+    if user == "perecornella":
+        root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
+    elif user == "alex":
+        root_dir = ""
+    else:
+        user = "demo"
+        print('Demo user not set up.')
+        sys.exit(1)
 
+    progress = pd.read_csv(f'metadata/{user}/progress.csv')
     try:
-        metadata = pd.read_csv('metadata/{datachannel}.csv')
+        metadata = pd.read_csv(f'metadata/{user}/results.csv')
     except:
-        metadata = pd.DataFrame(columns=['directory', 'filename', 'tuned', 'clear', 'healthy',
-                                          'type', 'x', 'y', 'z', 'd', 'bf', 'th', 'entrydate'])
+        metadata = pd.DataFrame(columns=['directory', 'filename', 'channel',
+                                         'tuned', 'clear', 'healthy','type',
+                                         'x', 'xf', 'y', 'z',
+                                         'entrydate'])
 
     app = QApplication(sys.argv)
     
-    if len(sys.argv) == 3:
-        demo = AppDemo(sys.argv[1], sys.argv[2])
-    elif len(sys.argv) == 2:
-        demo = AppDemo(sys.argv[1])
+    if len(sys.argv) == 4:
+        demo = AppDemo(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 3:
+        demo = AppDemo(sys.argv[2])
     else:
         demo = AppDemo()
 
