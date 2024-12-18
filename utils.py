@@ -334,7 +334,8 @@ def fra_dashboard(data: pd.DataFrame,
     )
 
     # Adjust spacing between main plots
-    fig.suptitle(filename, fontsize=12, ha='center')
+    # fig.suptitle(filename, fontsize=12, ha='center')
+    fig.suptitle("Hello Alex", fontsize=12, ha='center')
     fig.subplots_adjust(wspace=0.3, hspace=0.3, top=0.92, bottom=0.2)
  
 
