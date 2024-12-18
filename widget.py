@@ -419,7 +419,7 @@ if __name__ == "__main__":
     elif user == "alex":
         root_dir = ""
     else:
-        root_dir = "toy_dataset"
+        root_dir = "toy_dataset/"
 
     progress = pd.read_csv(f'metadata/{user}/progress.csv')
     try:

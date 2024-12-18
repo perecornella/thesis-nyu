@@ -12,7 +12,7 @@ if user == "perecornella":
 elif user == "alex":
     root_dir = ""
 else:
-    root_dir = "toy_dataset"
+    root_dir = "toy_dataset/"
 
 list_dir = []
 for dir in os.listdir(root_dir):
