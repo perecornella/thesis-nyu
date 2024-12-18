@@ -59,7 +59,11 @@ class AppDemo(QWidget):
                 print(f"{datetime.now()} - There's something wrong with the directory specified.")
                 sys.exit(1)
         
-        self.number_of_batches = (self.end - self.checkpoint) // self.batch_size
+        if self.end - self.checkpoint < self.batch_size:
+            self.number_of_batches = 1
+        else:
+            self.number_of_batches = (self.end - self.checkpoint) // self.batch_size
+        
         self.batch_pointer = 0
         self.counter = 0
 
@@ -115,8 +119,8 @@ class AppDemo(QWidget):
         if all_error:
             print(f"{datetime.now()} - All the remaining non-error files in {self.dir} have been processed.")
             progress.loc[progress['name'] == self.dir, 'checkpoint'] = self.end
-            progress.to_csv(f'metadata/{user}/progress_0.csv')
-            metadata.to_csv(f'metadata/{user}/results_0.csv')
+            progress.to_csv(f'metadata/{user}/progress.csv')
+            metadata.to_csv(f'metadata/{user}/results.csv')
             sys.exit(1)
 
     def create_widgets(self):
