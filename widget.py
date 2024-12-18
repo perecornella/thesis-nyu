@@ -420,8 +420,8 @@ if __name__ == "__main__":
     user = sys.argv[1]
     if user == "perecornella":
         root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
-    elif user == "alex":
-        root_dir = ""
+    elif user == "ar65":
+        root_dir = "/Users/ar65/Library/CloudStorage/GoogleDrive-ar65@nyu.edu/My Drive/ReyesLabNYU/"
     else:
         root_dir = "toy_dataset/"
 
