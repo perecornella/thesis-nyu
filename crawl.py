@@ -12,9 +12,7 @@ if user == "perecornella":
 elif user == "alex":
     root_dir = ""
 else:
-    user = "demo"
-    print('Demo user not set up.')
-    sys.exit(1)
+    root_dir = "toy_dataset"
 
 list_dir = []
 for dir in os.listdir(root_dir):

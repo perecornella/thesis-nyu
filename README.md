@@ -5,19 +5,17 @@ Pere Cornellà - 12/12/2024
 2. Set up a python virtual environment ```python3 -m venv ./venv``` (change python3 to your interpreter).
 3. Activate the virtual environment ```source ./venv/bin/activate```.
 4. Install the packages ```pip3 install -r ./config/requirements.txt``` (change pip3 to your downloader).
-5. Create a *metadata* folder.
-6. Insert your root directory in *crawl.py* and run it to retreieve information about the child directories and store it in *dir_info.csv*.
-7. Insert your root directory in *enrich_dataset.py*.
+6. Run ```crawl.py <username>```.
    
    ⚠️ Running this twice will erase your progress.
 
 **🚘 Instructions to run the GUI**
 
-```python3 -m enrich_dataset.py``` opens the non-explored file according to *dir_info.csv*.
+```python3 -m widget.py <username>``` opens the non-explored file according to *progress.csv*.
 
-```python3 -m enrich_dataset.py input_directory``` opens the non-explored file in *input_directory* according to *dir_info.csv*.
+```python3 -m widget.py <username> <input_directory>``` opens the first non-explored file in *input_directory* according to *progress.csv*.
 
-```python3 -m enrich_dataset.py input_directory filename``` opens the file in *input_directory/filename*. Running in this mode won't let you save the form.
+```python3 -m widget.py <username> <input_directory> <filename>``` opens the file in *input_directory/filename*. Running in this mode won't let you save the form.
 
 **💁🏻‍♂️ Information**
 
@@ -27,7 +25,6 @@ The metadata will consist of fixed values
 
  - Directory
  - Filename
- - $d'$, best frequency and threshold.
 
 And values the user can modify
  - Tuned (Yes / No)
@@ -35,6 +32,3 @@ And values the user can modify
  - Healthy (Yes / No)
  - Type (Intracellular / Extracellular)
  - Relative coordinates (x,y,z)
-   
-Except for the relative coordinates it will also store whether the user agrees with the suggested values.
-
