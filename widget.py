@@ -115,8 +115,8 @@ class AppDemo(QWidget):
         if all_error:
             print(f"{datetime.now()} - All the remaining non-error files in {self.dir} have been processed.")
             progress.loc[progress['name'] == self.dir, 'checkpoint'] = self.end
-            progress.to_csv(f'metadata/{user}/progress.csv')
-            metadata.to_csv(f'metadata/{user}/results.csv')
+            progress.to_csv(f'metadata/{user}/progress_0.csv')
+            metadata.to_csv(f'metadata/{user}/results_0.csv')
             sys.exit(1)
 
     def create_widgets(self):
