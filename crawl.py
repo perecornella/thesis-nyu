@@ -5,6 +5,10 @@ import numpy as np
 import time
 import sys
 
+if len(sys.argv) == 3:
+    version = sys.argv[2]
+else:
+    version = "v0"
 
 user = sys.argv[1]
 if user == "perecornella":
@@ -14,48 +18,34 @@ elif user == "ar65":
 else:
     root_dir = "toy_dataset/"
 
-list_dir = []
-for dir in os.listdir(root_dir):
-    if dir == 'in_vivo_data_pw':
-        for dir_aux in os.listdir(root_dir + dir):
+list_of_folders = []
+for folder in os.listdir(root_dir):
+    if folder == 'in_vivo_data_pw':
+        for dir_aux in os.listdir(root_dir + folder):
             if dir_aux[0] == str(1):
-                list_dir.append(dir+'/'+dir_aux+'/')
-    elif dir[0] == str(1):
-        list_dir.append(dir + '/')
+                list_of_folders.append(f"{folder}/{dir_aux}/")
+    elif folder[0] == str(1):
+        list_of_folders.append(f"{folder}/")
     else:
         pass
 
-dir_info = pd.DataFrame(columns=['name', 'start', 'end', 'checkpoint'])
+dir_info = pd.DataFrame(columns=['name', 'non checked files', 'checked files', 'error files'])
 measure1 = time.time()
-for dir in list_dir:
-    Match = np.zeros(1001)
-    min_file = 1001
-    max_file = 0
-
-    for file in os.listdir(root_dir + dir):
-        if file[0] == 'A':
-            num = int(file[1:-3])
-        
-        if num > max_file:
-            max_file = num
-        if num < min_file:
-            min_file = num
+for folder in list_of_folders:
+    non_checked_files = []
+    for file_name in os.listdir(root_dir + folder):
+        if file_name.startswith('A') and file_name[-3] == "d":
+            non_checked_files.append(file_name[0:-3])
    
-        # if Match[num] == 0:
-        #     Match[num] = 1
-        # elif Match[num] == 1:
-        #     Match[num] = 0
-   
-    info = {'name': dir,
-            'start': min_file,
-            'end': max_file,
-            'checkpoint': min_file} # 'Match': np.where(Match == 1)}
+    info = {'name': folder,
+            'non checked files': sorted(non_checked_files),
+            'checked files': [],
+            'error files': []}
+    
     dir_info = dir_info._append(info, ignore_index = True)
 
+dir_info = dir_info.sort_values(by=['name'], ascending=True)
 measure2 = time.time()
 print('Your dataset was crawled in', round(measure2 - measure1,2), 'seconds.')
 
-if not os.path.exists(f'./metadata/{user}'):
-    os.makedirs(f'./metadata/{user}')
-
-dir_info.to_csv(f'./metadata/{user}/progress.csv', index=False)
+dir_info.to_csv(f'./metadata/{user}/{version}/progress.csv', index=False)

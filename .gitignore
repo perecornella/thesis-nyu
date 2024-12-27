@@ -3,4 +3,5 @@ metadata
 logs
 venv
 __pycache__
+view_progress.py
 .DS_Store
