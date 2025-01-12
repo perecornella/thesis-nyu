@@ -1,2 +1,3 @@
-*.html linguist-detectable=false
-*.openedge linguist-detectable=false
+*.sh linguist-language=Bash
+*.py linguist-language=Python
+*.command linguist-language=Bash
