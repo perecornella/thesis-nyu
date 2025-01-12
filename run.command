@@ -27,7 +27,7 @@ source "./venv/$version/bin/activate"
 pip3 install -r "./config/requirements.txt" > /dev/null 2>&1
 
 # Create the metadata folder
-metadata_dir="metadata/$user/$version"
+metadata_dir="metadata/$user"
 if [ ! -d "$metadata_dir" ]; then
     mkdir -p "$metadata_dir"
     python3 "crawl.py" $user $version

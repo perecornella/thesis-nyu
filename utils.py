@@ -281,8 +281,8 @@ def fra_dashboard(matrix: np.array,
         s=25,
         alpha=0.8
     )
-    ax0.set_xticks(np.arange(0, len(freq), 2))
-    ax0.set_xticklabels(np.round(np.array(freq[::2]) / 1000, 1), rotation=45, fontsize=8)
+    ax0.set_xticks(np.arange(0, len(freq)))
+    ax0.set_xticklabels(np.round(np.array(freq) / 1000, 1), rotation=45, fontsize=8)
     ax0.tick_params(axis='y', labelsize=8)
     ax0.set_title("Activity by Frequency")
     ax0.set_xlabel("Frequency (kHz)")

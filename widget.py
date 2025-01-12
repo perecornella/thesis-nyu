@@ -86,10 +86,10 @@ class AppDemo(QWidget):
         while all_error:
             self.sample, error_files = read_in_data(root_dir + self.dir, [self.checkpoint], self.datachannel, self.triggerchannel)
 
-            self.existing_entry = metadata[
-            (metadata['directory'] == self.dir) &
-            (metadata['filename'] == self.checkpoint) &
-            (metadata['channel'] == self.datachannel)
+            self.existing_entry = results[
+            (results['directory'] == self.dir) &
+            (results['filename'] == self.checkpoint) &
+            (results['channel'] == self.datachannel)
             ]
 
             checked_message = "Checked" if not self.existing_entry.empty else "Not Checked"
@@ -110,9 +110,9 @@ class AppDemo(QWidget):
 
             if question == QMessageBox.Yes:
                 print(f"{datetime.now()} - Action: yes button clicked.")
-                print(f"{datetime.now()} - Message: answers saved in metadata.")
+                print(f"{datetime.now()} - Message: answers saved in results.")
                 progress.to_csv(progress_path)
-                metadata.to_csv(metadata_path)
+                results.to_csv(results_path)
                 sys.exit(1)  
 
             else:
@@ -315,11 +315,12 @@ class AppDemo(QWidget):
                 'xf': xf,
                 'y': y,
                 'z': z,
-                'entrydate': datetime.now()
+                'entrydate': datetime.now(),
+                'version': version
             }
 
             if self.existing_entry.empty:
-                metadata.loc[len(metadata)] = new_row
+                results.loc[len(results)] = new_row
                 print(f"{datetime.now()} - Message: successful submission for file {self.dir}{self.filename}/{self.datachannel}.")
             else:
                 print(f"{datetime.now()} - Message: there is an existing submission for file {self.dir}{self.filename}/{self.datachannel}.")
@@ -333,7 +334,7 @@ class AppDemo(QWidget):
                 if question == QMessageBox.Yes:
                     print(f"{datetime.now()} - Action: yes button clicked.")
                     index_to_update = self.existing_entry.index[0]
-                    metadata.loc[index_to_update] = new_row
+                    results.loc[index_to_update] = new_row
                     print(f"{datetime.now()} - Message: submission overwritten.")
                 else: 
                     print(f"{datetime.now()} - Action: button clicked.")
@@ -428,7 +429,7 @@ class AppDemo(QWidget):
             print(f"{datetime.now()} - Action: yes button clicked.")
             print(f"{datetime.now()} - Message: saving the progress...")
             progress.to_csv(progress_path)
-            metadata.to_csv(metadata_path)
+            results.to_csv(results_path)
             event.accept() 
         elif question == QMessageBox.No:
             print(f"{datetime.now()} - Action: no button clicked.")
@@ -452,18 +453,18 @@ if __name__ == "__main__":
     else:
         root_dir = "toy_dataset/"
 
-    progress_path = f'metadata/{user}/{version}/progress.csv'
-    metadata_path = f'metadata/{user}/{version}/results.csv'
+    progress_path = f'metadata/{user}/progress.csv'
+    results_path = f'metadata/{user}/results.csv'
 
     progress = pd.read_csv(progress_path)
     try:
-        metadata = pd.read_csv(metadata_path)
+        results = pd.read_csv(results_path)
     except:
-        metadata = pd.DataFrame(columns=['directory', 'filename', 'channel',
+        results = pd.DataFrame(columns=['directory', 'filename', 'channel',
                                          'tuned', 'exemplar', 'healthy','type',
                                          'best frequency', 'level threshold',
                                          'x', 'xf', 'y', 'z',
-                                         'entrydate'])
+                                         'entrydate', 'version'])
 
     app = QApplication(sys.argv)
     

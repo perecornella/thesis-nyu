@@ -5,11 +5,6 @@ import numpy as np
 import time
 import sys
 
-if len(sys.argv) == 3:
-    version = sys.argv[2]
-else:
-    version = "v0"
-
 user = sys.argv[1]
 if user == "perecornella":
     root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
@@ -48,4 +43,4 @@ dir_info = dir_info.sort_values(by=['name'], ascending=True)
 measure2 = time.time()
 print('Your dataset was crawled in', round(measure2 - measure1,2), 'seconds.')
 
-dir_info.to_csv(f'./metadata/{user}/{version}/progress.csv', index=False)
+dir_info.to_csv(f'./metadata/{user}/progress.csv', index=False)
