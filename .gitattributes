@@ -1,3 +1,7 @@
-*.sh linguist-detectable
-*.py linguist-detectable
-*.command linguist-detectable
+# Treat Python files as Python
+*.py linguist-language=Python
+*.pyw linguist-language=Python
+
+# Exclude certain files or directories if needed
+logs/* linguist-ignored
+venv/* linguist-ignored
