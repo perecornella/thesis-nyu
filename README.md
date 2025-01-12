@@ -1,5 +1,3 @@
-Pere Cornellà - 12/12/2024
-
 🚀 If your computer supports Bash scripting (e.g., Linux, macOS, or Windows with a Bash shell installed), you can simply double-click run.command to execute the program. Ensure the script has executable permissions (chmod +x run.command on Unix-like systems) before running.
 
 **⚙️ Instructions to set up the GUI**
