@@ -1,3 +1,3 @@
-*.sh linguist-language=Bash
-*.py linguist-language=Python
-*.command linguist-language=Bash
+*.sh linguist-detectable
+*.py linguist-detectable
+*.command linguist-detectable
