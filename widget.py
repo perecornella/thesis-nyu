@@ -205,6 +205,13 @@ class AppDemo(QWidget):
         self.level_box = QGroupBox("Threshold level Options")
         self.level_box.setLayout(self.level_layout)
 
+        # Notes box
+        self.notes_layout = QHBoxLayout()
+        self.note = QLineEdit()
+        self.notes_layout.addWidget(self.note)
+        self.notes_box = QGroupBox("Note")
+        self.notes_box.setLayout(self.notes_layout)
+
         # Form layout
         self.form_layout = QHBoxLayout()
         self.form_layout.addWidget(self.tuned_box)
@@ -213,6 +220,7 @@ class AppDemo(QWidget):
         self.form_layout.addWidget(self.type_box)
         self.form_layout.addWidget(self.bf_box)
         self.form_layout.addWidget(self.level_box)
+        self.form_layout.addWidget(self.notes_box)
 
         # Coordinates input for x, y, z
         self.x0_input = QLineEdit()
@@ -281,6 +289,7 @@ class AppDemo(QWidget):
         selected_type = self.type_combobox.currentText()
         best_frequency = float(self.bf_combobox.currentText()[:-4])
         level_threshold = float(self.level_combobox.currentText()[:-3])
+        note = str(self.note.text()) if self.note.text() else None
         x0 = float(self.x0_input.text()) if self.x0_input.text() else None
         xf = float(self.xf_input.text()) if self.xf_input.text() else None
         y = float(self.y_input.text()) if self.y_input.text() else None
@@ -293,7 +302,8 @@ class AppDemo(QWidget):
             Type: {selected_type}\n\
             Best frequency :{best_frequency}\n\
             Level threshold: {level_threshold}\n\
-            Coordinates: x={x0}, x={xf}, y={y}, z={z}"
+            Coordinates: x={x0}, x={xf}, y={y}, z={z}\n\
+            Note: {note}"
         question = QMessageBox.question(self, 
                                         'Confirm your entries',
                                         f"Are you sure you want to submit the following values for {self.filename}?\n\n{confirmation_message}", 
@@ -311,6 +321,7 @@ class AppDemo(QWidget):
                 'type': selected_type,
                 'best frequency': best_frequency,
                 'level threshold': level_threshold,
+                'note': note,
                 'x': x0,
                 'xf': xf,
                 'y': y,
@@ -465,6 +476,9 @@ if __name__ == "__main__":
                                          'best frequency', 'level threshold',
                                          'x', 'xf', 'y', 'z',
                                          'entrydate', 'version'])
+        
+    if 'note' not in results.columns:
+        results['note'] = None
 
     app = QApplication(sys.argv)
     
