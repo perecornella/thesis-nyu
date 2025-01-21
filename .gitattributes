@@ -1,7 +1,9 @@
 # Treat Python files as Python
 *.py linguist-language=Python
 *.pyw linguist-language=Python
+*.p linguist-language=Python
 
 # Exclude certain files or directories if needed
+toy_dataset/* linsguist-ignored
 logs/* linguist-ignored
 venv/* linguist-ignored
