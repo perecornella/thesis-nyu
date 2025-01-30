@@ -1,6 +1,6 @@
 #!/bin/bash
 
-version=v1
+version=v2
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 cd $script_dir

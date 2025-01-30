@@ -19,9 +19,12 @@ dt = 1000./rate
 time_window_adjust = 50.
 
 
-def get_files(packed_list):
-    unpacked_list = packed_list.strip('[]').split(', ')
-    return [item.strip("'") for item in unpacked_list]
+def get_filenames(packed_list):
+    packed_list = packed_list.strip("[]")
+    if not packed_list:
+        return []
+    return [item.strip(" '") for item in packed_list.split(", ") if item.strip(" '")]
+
 
 def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerchannel: str) -> Tuple[dict, dict]:
     """
@@ -57,7 +60,7 @@ def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
         nrun+=1
         channelname = datachannel + '%03d' % nrun
         triggername = triggerchannel + '%03d' % nrun
-        try :
+        try:
             tmp = data[channelname]
         except :
             break
@@ -72,7 +75,7 @@ def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
             ntones += 1
     
     if len(tonestart) != ntones:  		
-        print ('Wrong numer of tones got filtered out of the file', PathToDFile[-7:-3])	
+        # print ('Wrong numer of tones got filtered out of the file', PathToDFile[-7:-3])	
         sys.exit(1)
 
     in_data = []
@@ -127,7 +130,7 @@ def read_in_data(path_to_dir: str, files: list[str],
             batch_tonedata += tonedata
         
         except:
-            print('Error in file', NameOfDFile[0:4], ' in ' + path_to_dir[-7:] + ', pass.')
+            # print('Error in file', NameOfDFile[0:4], ' in ' + path_to_dir[-7:] + ', pass.')
             error_files.append(file)
             pass
     
