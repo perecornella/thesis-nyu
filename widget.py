@@ -66,6 +66,7 @@ class AppDemo(QWidget):
                 self.non_checked_files = get_filenames(row['non checked files'])
                 if len(self.non_checked_files) > 0:
                     self.dir = row['name']
+                    dir_info = progress[progress['name'] == self.dir].iloc[0]
                     break
 
         self.non_checked_files = get_filenames(dir_info['non checked files'])
@@ -113,7 +114,7 @@ class AppDemo(QWidget):
                 self.error_files.append(*error_files)
                 progress.at[dir_index[0], 'error files'] = self.error_files
                 progress.at[dir_index[0], 'non checked files'] = self.non_checked_files
-                progress.to_csv(progress_path)
+                progress.to_csv(progress_path, index=False)
                 self.update_files_list()
             
                 if len(self.non_checked_files) > 0:
@@ -401,7 +402,7 @@ class AppDemo(QWidget):
         dir_index = progress[progress['name'] == self.dir].index
         progress.at[dir_index[0], 'non checked files'] = self.non_checked_files
         progress.at[dir_index[0], 'checked files'] = self.checked_files
-        progress.to_csv(progress_path)
+        progress.to_csv(progress_path, index=False)
 
         self.existing_entry = results [
                 (results['directory'] == self.dir) &
