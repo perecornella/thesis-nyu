@@ -46,5 +46,5 @@ if __name__ == "__main__":
         root_dir = "toy_dataset/"
 
     dir_info = crawl_database(root_dir)
-    dir_info.to_csv(f'./metadata/{user}/progress.csv', index=False)
+    dir_info.to_csv(f'./users/{user}/metadata/progress.csv', index=False)
 

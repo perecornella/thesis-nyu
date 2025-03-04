@@ -1,7 +1,4 @@
-outputs
-metadata
-logs
+users
 venv
-view_progress.py
 .DS_Store
 __pycache__

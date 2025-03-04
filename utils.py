@@ -2,14 +2,72 @@ import sys
 import pickle
 import numpy as np
 import pandas as pd
+from datetime import datetime
 from scipy import ndimage
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
-from typing import Tuple, Callable
+from typing import Tuple, Callable, List
 import matplotlib.gridspec as gridspec
 from matplotlib.backends.backend_pdf import PdfPages
-from metrics import lacking_name
 from numpy import arange, array, concatenate, insert
+
+### OLD METRICS FILE
+
+
+
+def lacking_name(arr: np.array, window: List) -> float:
+    """
+    Calculates the variance of a window of an array taking the mean of the whole array.
+
+    Parameters:
+
+    arr (np.array): the array
+    window (List[int,int]): min and max index.
+
+    Returns:
+    The variance
+
+    """
+    mean = np.mean(arr)
+
+    i_min = window[0]
+    i_max = window[1]
+
+    if i_min < 0 or i_max >= len(arr):
+            print('Indices are out of bounds')
+            sys.exit(1)
+
+    result = 0
+    for i in range(i_min, i_max):
+         result += (arr[i] - mean)**2
+
+    result /= (i_max - i_min)
+        # Calculate the variance of the slice with respect to the mean of the whole array
+    return result
+
+def windowed_variance(arr: np.array, window = None):
+    if window is None:
+        return np.var(arr)
+    else:
+        i_min = window[0]
+        i_max = window[1]
+        slice_arr = arr[i_min:i_max+1]
+        return np.var(slice_arr)
+
+def variance(arr: np.array, window = None):
+   return np.var(arr)
+
+def width(arr: np.array, window = None):
+    i_min = window[0]
+    i_max = window[1]
+    if i_min < 0 or i_max >= len(arr):
+            print('Indices are out of bounds')
+            sys.exit(1)
+    return max(arr[i_min:i_max]) - min(arr[i_min:i_max])
+
+
+####
+
 
 tbefore = 20.
 tafter = 100.
@@ -18,17 +76,15 @@ rate = 10000
 dt = 1000./rate
 time_window_adjust = 50.
 
-
 def get_filenames(packed_list):
     packed_list = packed_list.strip("[]")
     if not packed_list:
         return []
     return [item.strip(" '") for item in packed_list.split(", ") if item.strip(" '")]
 
-
-def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerchannel: str) -> Tuple[dict, dict]:
+def read_rs_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerchannel: str) -> Tuple[dict, dict]:
     """
-    Reads a full recording and returns the windows of tbefore+tduration+tafter ms where
+    Reads a full response and returns the windows of tbefore+tduration+tafter ms where
     tones were played.
 
     Parameters:
@@ -43,62 +99,67 @@ def read_in_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
     Two dicts, one contains the tones played and the other the responses to those tones.
 
     """
+    data_file = pickle.load( open( PathToDFile, "rb" ), encoding="latin1" )
+    header_file = pickle.load( open( PathToHFile, "rb" ), encoding="latin1" )
+    nrun = 0
 
-    data = pickle.load( open( PathToDFile, "rb" ), encoding="latin1" )
-    header = pickle.load( open( PathToHFile, "rb" ), encoding="latin1" )
-
-    nrun = 0 # 0..number_of_runs
-    channelname = datachannel + '%03d' % nrun
-    triggername = triggerchannel + '%03d' % nrun
     while True:
-        if nrun == 0:
-            rawd0 = data[channelname]
-            rawd4 = data[triggername]
-        else :
-            rawd0 = concatenate((rawd0,data[channelname]))
-            rawd4 = concatenate((rawd4,data[triggername]))
-        nrun+=1
-        channelname = datachannel + '%03d' % nrun
-        triggername = triggerchannel + '%03d' % nrun
         try:
-            tmp = data[channelname]
-        except :
+            if nrun == 0:
+                rawd = data_file[datachannel + '%03d' % nrun]
+                rawd4 = data_file[triggerchannel + '%03d' % nrun]
+            else: 
+                rawd = concatenate((rawd, data_file[datachannel + '%03d' % nrun]))
+                rawd4 = concatenate((rawd4, data_file[triggerchannel + '%03d' % nrun]))
+            nrun += 1
+        except:
             break
-
-    trigger = arange(len(rawd4))[rawd4>0.5]	
-    diff = trigger[1:] - trigger[:-1]
-    tonestart = trigger[concatenate((array([True]),diff>300.))]
-
-    ntones = 0
-    for key in header:
-        if key[0:5] == 'tone_':
-            ntones += 1
     
-    if len(tonestart) != ntones:  		
-        # print ('Wrong numer of tones got filtered out of the file', PathToDFile[-7:-3])	
-        sys.exit(1)
+    error_code = 0
+    rs = []
+    tones = []
 
-    in_data = []
-    tonedata = []
+    if nrun > 0:
+        trigger = arange(len(rawd4))[rawd4>0.5]	
+        diff = trigger[1:] - trigger[:-1]
+        tonestart = trigger[concatenate((array([True]),diff>300.))]
 
-    for j in arange(len(tonestart)) :
-        in_data.append({
-            "toneid": PathToDFile[-7:-3] + "_" + str(j),
-            "recording": rawd0[int(tonestart[j]-tbefore/dt):int(tonestart[j]+tduration/dt + tafter/dt+1)]})
-        
-        tone = header['tone_number_%03d' % j]
-        tonedata.append({
-            "toneid": PathToDFile[-7:-3] + "_" + str(j),
-            "frequency": tone[0],
-            "level": tone[1],
-            "else": list(tone[2:-1])})
+        ntones = 0
+        for key in header_file:
+            if key[0:5] == 'tone_':
+                ntones += 1
+    
+        if len(tonestart) != ntones:  		
+            print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}, wrong number of tones filtered ({len(tonestart)}/{ntones}).")
+            error_code = 1 # wrong number of tones filtered
 
-    return in_data, tonedata
+        for i, pos in enumerate(tonestart):
 
-def read_in_data(path_to_dir: str, files: list[str],
-                 datachannel: str, triggerchannel: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+            rp = rawd[int(pos-tbefore/dt):int(pos+tduration/dt+tafter/dt+1)]
+            padding_length = (int(pos+tduration/dt+tafter/dt+1) - int(pos-tbefore/dt)) - len(rp)
+            padding = np.zeros(padding_length, dtype=rp.dtype)
+
+            rs.append({
+                "toneid": f"{PathToDFile[-7:-3]}_{str(i)}",
+                "response": np.concatenate((rp, padding))
+            })
+            tones.append({
+                "toneid": f"{PathToDFile[-7:-3]}_{str(i)}",
+                "frequency": header_file['tone_number_%03d' % i][0],
+                "level": header_file['tone_number_%03d' % i][1],
+                "else": list(header_file['tone_number_%03d' % i][2:])
+            })
+
+    else:
+        print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}, wrong format of labels.")
+        error_code = 2 # wrong format
+
+    return rs, tones, error_code
+
+def read_rs(path_to_dir: str, files: list[str],
+            datachannel: str, triggerchannel: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Reads the specified set of recordings in a directory.
+    Reads the specified set of responses in a directory.
 
     Parameters:
 
@@ -113,45 +174,42 @@ def read_in_data(path_to_dir: str, files: list[str],
     the tones the responses, the other the tonedata. 
     
     """
-    batch_data = []
-    batch_tonedata = []
 
-    error_files = []
+    batch_of_rs = []
+    batch_of_tones = []
+    error_rs = []
     
     for file in files:
         NameOfDFile = f"{file}d.p"
         NameOfHFile = f"{file}h.p"
         
-        try:
-            data, tonedata = read_in_file(path_to_dir + NameOfDFile,
-                                            path_to_dir + NameOfHFile,
-                                            datachannel, triggerchannel)
-            batch_data += data
-            batch_tonedata += tonedata
+        rs, tones, error_code = read_rs_file(path_to_dir + NameOfDFile,
+                                              path_to_dir + NameOfHFile,
+                                              datachannel, triggerchannel)
+        batch_of_rs += rs
+        batch_of_tones += tones
         
-        except:
-            # print('Error in file', NameOfDFile[0:4], ' in ' + path_to_dir[-7:] + ', pass.')
-            error_files.append(file)
-            pass
+        if error_code != 0:
+            error_rs.append(f"{file}:{error_code}")
     
 
-    data_df = pd.DataFrame(batch_data, columns=["toneid", "recording"])
-    tonedata_df = pd.DataFrame(batch_tonedata, columns=["toneid", "frequency", "level", "else"])
-    merged_df = pd.merge(data_df, tonedata_df, how="left", on="toneid")
-    merged_df = merged_df[['toneid', 'recording', 'frequency', 'level']]
+    rs_df = pd.DataFrame(batch_of_rs, columns=["toneid", "response"])
+    tones_df = pd.DataFrame(batch_of_tones, columns=["toneid", "frequency", "level", "else"])
+    df = pd.merge(rs_df, tones_df, how="left", on="toneid")
+    df = df[['toneid', 'response', 'frequency', 'level']]
 
-    return merged_df, error_files
+    return df, error_rs
 
-def fra(matrix: np.array,
+def fra(activity_matrix: np.array,
         mode = None):
     """
     """
     if mode == None:
-        filtered_matrix = ndimage.median_filter(matrix, size = 3, mode='reflect')
+        filtered_matrix = ndimage.median_filter(activity_matrix, size = 3, mode='reflect')
         activity_frequency = np.sum(filtered_matrix, axis = 0)
         activity_level = np.sum(filtered_matrix, axis = 1)
 
-        step = (max(activity_frequency) - min(activity_frequency)) / matrix.shape[0]
+        step = (max(activity_frequency) - min(activity_frequency)) / activity_matrix.shape[0]
         best_frequency_index = np.argmax(activity_frequency)
 
         # Get the threshold as the maximum point of curvature
@@ -188,28 +246,28 @@ def fra(matrix: np.array,
 
         return activity_frequency, activity_level
 
-def get_recording_activity(data: pd.DataFrame,
+def get_rs_activity(rs: pd.DataFrame,
                            metric: callable = lacking_name):
     """
     """
 
-    data = data.sort_values(by=['level', 'frequency'], ascending=[False, True])
-    spls = data['level'].unique()
-    freq = data['frequency'].unique()
+    rs = rs.sort_values(by=['level', 'frequency'], ascending=[False, True])
+    spls = rs['level'].unique()
+    freq = rs['frequency'].unique()
     n_spls = len(spls)
     n_freq = len(freq)
 
-    data['activity'] = data['recording'].apply(lambda x: metric(arr = x,
-                                                window = [int(tbefore/dt),
-                                                int(tbefore/dt + tduration/dt)]))
+    rs['activity'] = rs['response'].apply(
+        lambda x: metric(arr = x, window = [int(tbefore/dt), int(tbefore/dt + tduration/dt)])
+    )
 
-    matrix = np.empty((len(spls), len(freq)), dtype=float)
-    for i, (index, row) in enumerate(data.iterrows()):
-        matrix[i // n_freq, i % n_freq] = row['activity']
+    activity_matrix = np.empty((len(spls), len(freq)), dtype=float)
+    for i, (index, row) in enumerate(rs.iterrows()):
+        activity_matrix[i // n_freq, i % n_freq] = row['activity']
 
-    activity_frequency, activity_level = fra(matrix)
+    activity_frequency, activity_level = fra(activity_matrix)
 
-    return matrix, \
+    return activity_matrix, \
            activity_frequency, \
            activity_level, \
            spls, \
@@ -323,37 +381,36 @@ def fra_dashboard(matrix: np.array,
  
     return fig
 
-
-def plot_traces(data: pd.DataFrame,
-               selected_freq: list[int],
-               filename: str):
+def plot_traces(rs: pd.DataFrame,
+                selected_freq: list[int],
+                filename: str):
     """
     """
 
     time_range = arange(-tbefore,tduration+tafter+dt-time_window_adjust,dt)
-    data = data.sort_values(by=['level', 'frequency'], ascending=[False, True])
-    freq = data['frequency'].unique()
-    data = data[data['frequency'].isin(freq[selected_freq])]
-    spls = data['level'].unique()
-    freq = data['frequency'].unique()
+    rs = rs.sort_values(by=['level', 'frequency'], ascending=[False, True])
+    freq = rs['frequency'].unique()
+    rs = rs[rs['frequency'].isin(freq[selected_freq])]
+    spls = rs['level'].unique()
+    freq = rs['frequency'].unique()
     
     # Get the range of the activity y-axis. 
     maximum = -100.
     minimum = +100.
-    for arr in data['recording']:
+    for arr in rs['response']:
         if maximum < max(arr):
             maximum = max(arr)
         if minimum > min(arr):
             minimum = min(arr)
 
-    min_spl = min(data['level'])
-    min_frq = min(data['frequency'])
+    min_spl = min(rs['level'])
+    min_frq = min(rs['frequency'])
 
     fig = plt.figure(figsize=(16,8))  
 
-    for i, (index, row) in enumerate(data.iterrows()):
+    for i, (index, row) in enumerate(rs.iterrows()):
         ax = plt.subplot(len(spls), len(freq), i + 1)
-        ax.plot(time_range, row['recording'][range(len(time_range))] / 1.0)
+        ax.plot(time_range, row['response'][range(len(time_range))] / 1.0)
 
         # Set x-axis and y-axis limits, and ticks
         ax.set_ylim(minimum, maximum)

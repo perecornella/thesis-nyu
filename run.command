@@ -1,6 +1,6 @@
 #!/bin/bash
 
-version=v2
+version=v3
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 cd $script_dir
@@ -9,7 +9,7 @@ cd $script_dir
 user=$(whoami)
 
 # Set where to store the logs
-log_dir="logs/$user/$version"
+log_dir="users/$user/logs/$version"
 if [ ! -d "$log_dir" ]; then
     mkdir -p "$log_dir"
 fi
@@ -20,6 +20,7 @@ echo "Starting the program as $user..."
 
 # Update / activate the venv install the dependencies
 if [ ! -d "venv/$version" ]; then
+    ./config/new_version.command
     python3 -m venv ./venv/$version
 fi
 find venv -mindepth 1 -maxdepth 1 ! -name "$version" -exec rm -rf {} +
@@ -27,7 +28,7 @@ source "./venv/$version/bin/activate"
 pip3 install -r "./config/requirements.txt" > /dev/null 2>&1
 
 # Create the metadata folder
-metadata_dir="metadata/$user"
+metadata_dir="users/$user/metadata"
 if [ ! -d "$metadata_dir" ]; then
     mkdir -p "$metadata_dir"
     python3 "crawl.py" $user $version
@@ -41,13 +42,13 @@ if [[ -n "$input_directory" ]]; then
     read input_file
     if [[ -n "$input_file" ]]; then
         echo "Launching at $input_directory$input_file."
-	    python3 "widget.py" $user $version $input_directory $input_file 
+	    python3 "gui.py" $user $version $input_directory $input_file 
     else
         echo "Launching at $input_directory."
-        python3 "widget.py" $user $version $input_directory
+        python3 "gui.py" $user $version $input_directory
     fi
 else
-    python3 "widget.py" $user $version
+    python3 "gui.py" $user $version
 fi
 
 echo "Program finished!"
