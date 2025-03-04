@@ -20,7 +20,6 @@ echo "Starting the program as $user..."
 
 # Update / activate the venv install the dependencies
 if [ ! -d "venv/$version" ]; then
-    ./config/new_version.command
     python3 -m venv ./venv/$version
 fi
 find venv -mindepth 1 -maxdepth 1 ! -name "$version" -exec rm -rf {} +
