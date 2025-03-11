@@ -7,25 +7,35 @@ from utils import fra_dashboard, read_rs, plot_traces, get_rs_activity, get_file
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QRadioButton,
                              QHBoxLayout, QLineEdit, QLabel, QComboBox, QMessageBox,
-                             QButtonGroup, QGroupBox)
+                             QButtonGroup, QGroupBox, QShortcut)
+from PyQt5.QtGui import QKeySequence
+from PyQt5.QtCore import Qt
 
 class Canvas(FigureCanvas):
 
-    def __init__(self, parent, rs, filename):
-        # Create the figure using the plot_dashboard function
-        matrix, activity_frequency, activity_level, spls, freq = get_rs_activity(rs)
-        parent.bf_options_list = [f"{round(f/1000,1)} kHz" for f in freq]
-        parent.level_options_list = [f"{round(s,0)} dB" for s in spls]
+    def __init__(self, parent):
 
-        if parent.visualization == "all traces":
-            self.fig = plot_traces(rs, range(len(freq)), filename=filename)
-    
-        if parent.visualization == "highest activity traces":
-            bf_index = np.argmax(activity_frequency)
-            self.fig = plot_traces(rs, range(bf_index-1,bf_index+2), filename=filename)
+        if len(parent.rs) != 0:
+            # Create the figure using the plot_dashboard function
+            matrix, activity_frequency, activity_level, spls, freq = get_rs_activity(parent.rs)
+            parent.bf_options_list = [f"{round(f/1000,1)} kHz" for f in freq]
+            parent.level_options_list = [f"{round(s,0)} dB" for s in spls]
 
-        if parent.visualization == "activity plots":
-            self.fig = fra_dashboard(matrix, filename, activity_frequency, activity_level, spls, freq)
+            if parent.visualization == "all traces":
+                self.fig = plot_traces(parent.rs, range(len(freq)), filename=parent.chart_title)
+        
+            elif parent.visualization == "highest activity traces":
+                bf_index = np.argmax(activity_frequency)
+                min_index = max(0, bf_index - 1)
+                max_index = min(len(freq), bf_index + 2)
+                self.fig = plot_traces(parent.rs, range(min_index, max_index), filename=parent.chart_title)
+
+            elif parent.visualization == "activity plots":
+                self.fig = fra_dashboard(matrix, parent.chart_title, activity_frequency, activity_level, spls, freq)
+        else:
+            self.fig = plt.figure(figsize=(16,8))
+            parent.bf_options_list = []
+            parent.level_options_list = []
 
         super().__init__(self.fig)  # Pass the figure to the FigureCanvas constructor
         self.setParent(parent)  # Set the parent for the canvas
@@ -36,60 +46,65 @@ class AppDemo(QWidget):
 
         super().__init__()
 
-        self.input_directory = input_directory
-        self.input_file = input_file
+        self.setFocusPolicy(Qt.StrongFocus)
+
         self.datachannel = "di0P"
         self.triggerchannel = "di4P"
         self.visualization = "all traces"
-
-        self.set_directory()
+        self.set_first_directory_and_checkpoint()
         self.update_files_list()
-        self.set_first_checkpoint()
         self.load_data_on_checkpoint()
-        self.chart = Canvas(self, self.rs, self.chart_tittle)
+        self.chart = Canvas(self)
         self.create_widgets()
-        self.update_widgets_values()
         self.set_layout()
+        self.update_widgets()
+        self.define_shortcuts()
 
-    def set_directory(self):
+    def define_shortcuts(self):
+        next_shortcut = QShortcut(QKeySequence(Qt.ALT + Qt.Key_M), self)  
+        next_shortcut.setContext(Qt.ApplicationShortcut)
+        next_shortcut.activated.connect(self.on_next_clicked)
 
-        if self.input_directory is not None:
-            if self.input_directory[-1] != '/':
-                self.input_directory += '/'
-            self.dir = self.input_directory 
-            try:
-                dir_info = progress[progress['name'] == self.dir].iloc[0]
-            except:
-                print(f"{datetime.now()} - Error: There's something wrong with the directory {self.input_directory}.")
-                sys.exit(1)
-        else:
-            for i, row in progress.iterrows():
-                self.non_checked_files = get_filenames(row['non checked files'])
-                if len(self.non_checked_files) > 0:
-                    self.dir = row['name']
-                    dir_info = progress[progress['name'] == self.dir].iloc[0]
-                    break
+        back_shortcut = QShortcut(QKeySequence(Qt.ALT + Qt.Key_N), self)  
+        back_shortcut.setContext(Qt.ApplicationShortcut)
+        back_shortcut.activated.connect(self.on_back_clicked)
 
+        send_shortcut = QShortcut(QKeySequence(Qt.ALT + Qt.Key_Return), self) 
+        send_shortcut.setContext(Qt.ApplicationShortcut)
+        send_shortcut.activated.connect(self.on_send_clicked)
+
+        discard_shortcut = QShortcut(QKeySequence(Qt.ALT + Qt.Key_Backspace), self) 
+        discard_shortcut.setContext(Qt.ApplicationShortcut)
+        discard_shortcut.activated.connect(self.on_discard_clicked)
+
+    def set_first_directory_and_checkpoint(self):
+
+        all_checked = True
+        for i, row in progress.iterrows():                
+            self.non_checked_files = get_filenames(row['non checked files'])
+            self.checked_files = get_filenames(row['checked files'])
+            if len(self.non_checked_files) > 0:
+                self.dir = row['name']
+                all_checked = False 
+                break
+            elif len(self.checked_files) > 0:
+                aux_row = row
+        if all_checked:
+            print(f"{datetime.now()} - Congrats! You annotated all the files in your dataset.")
+            self.dir = aux_row['name']
+
+        dir_info = progress[progress['name'] == self.dir].iloc[0]
         self.non_checked_files = get_filenames(dir_info['non checked files'])
         self.checked_files = get_filenames(dir_info['checked files'])
         self.error_files = get_filenames(dir_info['error files'])
 
-    def set_first_checkpoint(self):
-        if self.files_list:
-            if self.input_file is not None:
-                if self.input_file not in self.files_list:
-                    print(f"{datetime.now()} - Error: The specified file {self.input_directory}{self.input_file} is either not on the directory or has errors.")
-                    sys.exit(1)
-                else:
-                    self.checkpoint = self.input_file
-            elif len(self.non_checked_files) > 0:
-                self.checkpoint = self.non_checked_files[0]
-            else:
-                self.checkpoint = self.files_list[0]
-        
+        if len(self.non_checked_files) > 0:
+            self.checkpoint = self.non_checked_files[0]
+        elif len(self.checked_files) > 0:
+            self.checkpoint = self.checked_files[0]
         else:
-            print(f"{datetime.now()} - Message: There are no files in {self.input_directory}.")
-            sys.exit(1)
+            print(f"{datetime.now()} - Warning: the directory only has error files.")
+            QMessageBox.warning(self, "Message", "The directory only has error files.")
 
     def update_files_list(self):
         self.files_list = sorted([
@@ -97,6 +112,11 @@ class AppDemo(QWidget):
             if not any(error_file.startswith(file) for error_file in self.error_files)
         ])
 
+        self.files_with_tags_list = sorted([
+            f"{file} (checked)" if file in self.checked_files else file
+            for file in list(self.non_checked_files) + list(self.checked_files)
+            if not any(error_file.startswith(file) for error_file in self.error_files)
+        ])
 
     def load_data_on_checkpoint(self):
 
@@ -114,7 +134,7 @@ class AppDemo(QWidget):
 
             if len(error_files) == 0:
                 print(f"{datetime.now()} - Message: sucessfully showing file {self.dir}{self.checkpoint}.")
-                self.chart_tittle = f"File {self.dir}{self.checkpoint} showing channel {self.datachannel}, {"Checked" if not self.existing_entry.empty else "Not checked"}"
+                self.chart_title = f"File {self.dir}{self.checkpoint} showing channel {self.datachannel}, {"Checked" if not self.existing_entry.empty else "Not checked"}"
                 break
 
             else:
@@ -126,28 +146,44 @@ class AppDemo(QWidget):
                 progress.at[dir_index[0], 'error files'] = self.error_files
                 progress.at[dir_index[0], 'non checked files'] = self.non_checked_files
                 progress.to_csv(progress_path, index=False)
+                checkpoint_index = self.files_list.index(self.checkpoint)
                 self.update_files_list()
-            
-                if len(self.non_checked_files) > 0:
-                    self.checkpoint = self.non_checked_files[0]     
-
+                if checkpoint_index < len(self.files_list):
+                    self.checkpoint = self.files_list[checkpoint_index]
+                elif len(self.non_checked_files) > 0:
+                    self.checkpoint = self.non_checked_files[0]
+                elif len(self.checked_files) > 0:
+                    self.checkpoint = self.checked_files[0]
                 else:
-                    print(f"{datetime.now()} - Warning: no more non checked files to check.")
-                    question = QMessageBox.warning(
-                        self, 
-                        "Message", 
-                        f"All the remaining files in {self.dir} are error files. Do you want to exit and look in another directory? You may also stay to review your answers.",
-                        QMessageBox.Yes | QMessageBox.No, 
-                        QMessageBox.Yes
-                    )
-                    if question == QMessageBox.Yes:
-                        sys.exit(1) 
-                    else: 
-                        self.checkpoint = self.files_list[-1]
+                    print(f"{datetime.now()} - Warning: the directory only has error files.")
+                    QMessageBox.warning(self, "Message", "The directory only has error files.")
+                    break
+
+                aux_checkpoint = self.checkpoint
+                self.update_file_combobox()
+                self.file_combobox.setCurrentText(next(item for item in self.files_with_tags_list if item.startswith(aux_checkpoint)))
 
     def create_widgets(self):
 
-        # FRA or Traces question for Visualization
+        # Directory options
+        self.directory_combobox = QComboBox()
+        self.directory_combobox.addItems(progress['name'].unique())
+        self.directory_combobox.currentIndexChanged.connect(self.on_directory_selected)
+        self.directory_layout = QHBoxLayout()
+        self.directory_layout.addWidget(self.directory_combobox)
+        self.directory_box = QGroupBox("Select directory")
+        self.directory_box.setLayout(self.directory_layout)
+
+        # File options
+        self.file_combobox = QComboBox()
+        self.file_combobox.addItems(self.files_with_tags_list)
+        self.file_combobox.currentIndexChanged.connect(self.on_file_selected)
+        self.file_layout = QHBoxLayout()
+        self.file_layout.addWidget(self.file_combobox)
+        self.file_box = QGroupBox("Select file")
+        self.file_box.setLayout(self.file_layout)
+
+        # Visualization options
         self.visualization_combobox = QComboBox()
         self.visualization_combobox.addItems(["All traces", "Highest activity traces", "Activity plots"])
         self.visualization_combobox.currentIndexChanged.connect(self.on_vis_selected)
@@ -156,9 +192,9 @@ class AppDemo(QWidget):
         self.visualization_box = QGroupBox("Select visualization")
         self.visualization_box.setLayout(self.visualization_layout)
 
-        # Channel 0 or 2 question for Channel
+        # Channel options
         self.channel_combobox = QComboBox()
-        self.channel_combobox.addItems(["Channel 0", "Channel 2", "Channel 1", "Channel 3"])
+        self.channel_combobox.addItems(["Channel 0", "Channel 2", "Channel 1", "Channel 3", "Channel 4"])
         self.channel_combobox.currentIndexChanged.connect(self.on_channel_selected)
         self.channel_layout = QHBoxLayout()
         self.channel_layout.addWidget(self.channel_combobox)
@@ -167,6 +203,8 @@ class AppDemo(QWidget):
 
         # Chart options layout
         self.vis_options_layout = QHBoxLayout()
+        self.vis_options_layout.addWidget(self.directory_box)
+        self.vis_options_layout.addWidget(self.file_box)
         self.vis_options_layout.addWidget(self.visualization_box)
         self.vis_options_layout.addWidget(self.channel_box)
 
@@ -240,11 +278,11 @@ class AppDemo(QWidget):
 
         # Form layout
         self.form_c1_layout = QVBoxLayout()
-        self.form_c1_layout.addWidget(self.tuned_box)
-        self.form_c1_layout.addWidget(self.exemplar_box)
+        self.form_c1_layout.addWidget(self.healthy_box)
+        self.form_c1_layout.addWidget(self.type_box)
         self.form_c2_layout = QVBoxLayout()
-        self.form_c2_layout.addWidget(self.healthy_box)
-        self.form_c2_layout.addWidget(self.type_box)
+        self.form_c2_layout.addWidget(self.tuned_box)
+        self.form_c2_layout.addWidget(self.exemplar_box)
         self.form_c3_layout = QVBoxLayout()
         self.form_c3_layout.addWidget(self.bf_box)
         self.form_c3_layout.addWidget(self.level_box)
@@ -318,18 +356,9 @@ class AppDemo(QWidget):
             }
         """
 
-        discard_button_style = default_button_style + """
-            QPushButton {
-                background-color: #F0C7C7; /* Softer pale red */
-            }
-            QPushButton:hover {
-                background-color: #E8A8A8;
-            }
-        """
-
         # Apply styles
         self.send_button.setStyleSheet(send_button_style)   
-        self.discard_button.setStyleSheet(discard_button_style)  
+        self.discard_button.setStyleSheet(default_button_style)  
         self.back_button.setStyleSheet(default_button_style)  
         self.next_button.setStyleSheet(default_button_style)  
 
@@ -341,15 +370,33 @@ class AppDemo(QWidget):
         self.button_layout_2.addWidget(self.send_box)
         self.button_layout_2.addWidget(self.discard_box)
 
-    def update_widgets_options(self):
-        self.bf_combobox = QComboBox()
+    def set_layout(self):
+
+        self.layout = QVBoxLayout()
+        self.layout.addLayout(self.vis_options_layout)
+        self.layout.addWidget(self.chart)
+        self.r1_layout = QHBoxLayout()
+        self.r1_layout.addLayout(self.form_c1_layout)
+        self.r1_layout.addLayout(self.form_c2_layout)
+        self.r1_layout.addLayout(self.form_c3_layout)
+        self.r1_layout.addLayout(self.button_layout_2)
+        self.r1_layout.addLayout(self.button_layout_1)
+        self.layout.addLayout(self.r1_layout)
+        self.layout.addWidget(self.coord_box)
+        self.layout.addWidget(self.notes_box)
+        self.setLayout(self.layout)
+
+    def update_widgets(self):
+
+        self.bf_combobox.clear()
         self.bf_combobox.addItems(["-"] + self.bf_options_list)
 
-        self.level_combobox = QComboBox()
+        self.level_combobox.clear()
         self.level_combobox.addItems(["-"] + self.level_options_list)
 
-    def update_widgets_values(self):
-        
+        self.directory_combobox.setCurrentText(self.dir)
+        self.file_combobox.setCurrentText(self.checkpoint)
+
         if self.existing_entry.empty:
             self.tuned_button_group.setExclusive(False)
             self.tuned_button_yes.setChecked(False)
@@ -380,23 +427,18 @@ class AppDemo(QWidget):
             self.bf_combobox.setCurrentText(f"{self.existing_entry['best frequency'].iloc[0]} kHz")
             self.note.setText(str(self.existing_entry['note'].iloc[0]) if self.existing_entry['note'].iloc[0] else "")
 
-    def set_layout(self):
+    def update_file_combobox(self):
 
-        self.layout = QVBoxLayout()
-        self.layout.addLayout(self.vis_options_layout)
-        self.layout.addWidget(self.chart)
-        self.r1_layout = QHBoxLayout()
-        self.r1_layout.addLayout(self.form_c1_layout)
-        self.r1_layout.addLayout(self.form_c2_layout)
-        self.r1_layout.addLayout(self.form_c3_layout)
-        self.r1_layout.addLayout(self.button_layout_2)
-        self.r1_layout.addLayout(self.button_layout_1)
-        self.layout.addLayout(self.r1_layout)
-        # self.layout.addLayout(self.coord_layout)
-        self.layout.addWidget(self.coord_box)
-        self.layout.addWidget(self.notes_box)
-        self.setLayout(self.layout)
-        
+        self.file_combobox.clear()
+        self.file_combobox.addItems(self.files_with_tags_list)
+
+    def update_dashboard(self):
+        plt.close(self.chart.figure)
+        self.layout.removeWidget(self.chart)
+        self.chart.deleteLater()
+        self.chart = Canvas(self)
+        self.layout.insertWidget(1, self.chart)
+
     # Action functions
 
     def on_send_clicked(self):
@@ -479,6 +521,11 @@ class AppDemo(QWidget):
                 (annotations['channel'] == self.datachannel)
         ]
 
+        aux_checkpoint = self.checkpoint
+        self.update_files_list()
+        self.update_file_combobox()
+        self.file_combobox.setCurrentText(next(item for item in self.files_with_tags_list if item.startswith(aux_checkpoint)))
+
     def on_discard_clicked(self):
             
         print(f"{datetime.now()} - Action: discard button clicked.")
@@ -510,16 +557,14 @@ class AppDemo(QWidget):
             if checkpoint_index + 1 < len(self.files_list):
                 self.checkpoint = self.files_list[checkpoint_index + 1]
                 print(f"{datetime.now()} - Message: showing file {self.dir}{self.checkpoint}.")
-                self.load_data_on_checkpoint()
-                self.update_widgets_values()
-                self.update_dashboard()
             else:
                 print(f"{datetime.now()} - Message: {self.dir}{self.checkpoint} was the last file.")
                 QMessageBox.warning(self, "Message", "You reached the last file in the directory.")
                 self.checkpoint = self.files_list[checkpoint_index - 1]
-                self.load_data_on_checkpoint()
-                self.update_widgets_values()
-                self.update_dashboard()
+            self.load_data_on_checkpoint()
+            self.update_widgets()
+            self.update_dashboard()
+            self.file_combobox.setCurrentText(next(item for item in self.files_with_tags_list if item.startswith(self.checkpoint)))
 
         else:
             print(f"{datetime.now()} - Action: no button clicked.")
@@ -536,9 +581,10 @@ class AppDemo(QWidget):
             self.checkpoint = self.files_list[checkpoint_index + 1]
             print(f"{datetime.now()} - Message: showing file {self.dir}{self.checkpoint}.")
             self.load_data_on_checkpoint()
-            self.update_widgets_values()
+            self.update_widgets()
             self.update_dashboard()
-            self.update_widgets_options()
+            self.file_combobox.setCurrentText(next(item for item in self.files_with_tags_list if item.startswith(self.checkpoint)))
+
         else:
             print(f"{datetime.now()} - Message: {self.dir}{self.checkpoint} is the last file.")
             QMessageBox.warning(self, "Message", "You reached the last file in the directory.")
@@ -554,12 +600,48 @@ class AppDemo(QWidget):
             self.checkpoint = self.files_list[checkpoint_index - 1]
             print(f"{datetime.now()} - Message: showing file {self.dir}{self.checkpoint}.")
             self.load_data_on_checkpoint()
-            self.update_widgets_values()
+            self.update_widgets()
             self.update_dashboard()
-            self.update_widgets_options()
+            self.file_combobox.setCurrentText(next(item for item in self.files_with_tags_list if item.startswith(self.checkpoint)))
         else:
             print(f"{datetime.now()} - {self.dir}{self.checkpoint} is the first file.")
             QMessageBox.warning(self, "Message", "You reached the first file in the directory.")
+
+    def on_directory_selected(self, index):
+
+        self.dir = self.directory_combobox.itemText(index)
+        dir_info = progress[progress['name'] == self.dir].iloc[0]
+
+        self.non_checked_files = get_filenames(dir_info['non checked files'])
+        self.checked_files = get_filenames(dir_info['checked files'])
+        self.error_files = get_filenames(dir_info['error files'])
+        self.update_files_list()
+
+        if len(self.files_list) == 0:
+            print(f"{datetime.now()} - Message: {self.dir} was the last file.")
+            QMessageBox.warning(self, "Message", "This directory is empty.")
+        else:
+            if len(self.non_checked_files) > 0:
+                self.checkpoint = self.non_checked_files[0]
+            elif len(self.files_list) > 0:
+                self.checkpoint = self.files_list[0]
+
+            print(f"{datetime.now()} - Message: successfully changed to {self.dir}{self.checkpoint}")
+            self.load_data_on_checkpoint()
+            self.update_dashboard()
+
+        self.update_file_combobox()
+        self.update_widgets()
+
+    def on_file_selected(self, index):
+        selected_text = self.file_combobox.itemText(index)
+        if selected_text:  # Ensure it's not empty
+            self.checkpoint = selected_text[0:4]
+            self.load_data_on_checkpoint()
+            self.update_dashboard()
+            self.update_widgets()
+        else:
+            pass
 
     def on_vis_selected(self, index):
         if self.visualization_combobox.itemText(index) == "All traces":
@@ -580,17 +662,11 @@ class AppDemo(QWidget):
             self.datachannel = "di1P"
         elif self.channel_combobox.itemText(index) == "Channel 3":
             self.datachannel = "di3P"
+        elif self.channel_combobox.itemText(index) == "Channel 4":
+            self.datachannel = "di4P"
         self.load_data_on_checkpoint()
-        self.update_widgets_values()
+        self.update_widgets()
         self.update_dashboard()
-        self.update_widgets_options()
-
-    def update_dashboard(self):
-        plt.close(self.chart.figure)
-        self.layout.removeWidget(self.chart)
-        self.chart.deleteLater()
-        self.chart = Canvas(self, self.rs, self.chart_tittle)
-        self.layout.insertWidget(1, self.chart)
 
     def closeEvent(self, event):
         print(f"{datetime.now()} - Action: exit button clicked.")
@@ -639,13 +715,8 @@ if __name__ == "__main__":
         discarded = pd.DataFrame(columns=['directory', 'filename'])
 
     app = QApplication(sys.argv)
-    if len(sys.argv) > 4:
-        demo = AppDemo(sys.argv[3], sys.argv[4])
-    elif len(sys.argv) > 3:
-        demo = AppDemo(sys.argv[3])
-    else:
-        demo = AppDemo()
 
+    demo = AppDemo()
     demo.show()
     demo.closeEvent = demo.closeEvent
     sys.exit(app.exec_())

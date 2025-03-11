@@ -1,6 +1,6 @@
 #!/bin/bash
 
-version=v3
+version=v4
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 cd $script_dir
@@ -33,22 +33,7 @@ if [ ! -d "$metadata_dir" ]; then
     python3 "crawl.py" $user $version
 fi
 
-# Prompt for a directory
-echo "If desired, enter a specific directory (or press Enter to skip):"
-read input_directory
-if [[ -n "$input_directory" ]]; then
-    echo "If desired, enter a specific file (or press Enter to skip):"
-    read input_file
-    if [[ -n "$input_file" ]]; then
-        echo "Launching at $input_directory$input_file."
-	    python3 "gui.py" $user $version $input_directory $input_file 
-    else
-        echo "Launching at $input_directory."
-        python3 "gui.py" $user $version $input_directory
-    fi
-else
-    python3 "gui.py" $user $version
-fi
+python3 "gui.py" $user $version
 
 echo "Program finished!"
 

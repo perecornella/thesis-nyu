@@ -13,8 +13,6 @@ from numpy import arange, array, concatenate, insert
 
 ### OLD METRICS FILE
 
-
-
 def lacking_name(arr: np.array, window: List) -> float:
     """
     Calculates the variance of a window of an array taking the mean of the whole array.
@@ -77,10 +75,11 @@ dt = 1000./rate
 time_window_adjust = 50.
 
 def get_filenames(packed_list):
-    packed_list = packed_list.strip("[]")
-    if not packed_list:
+    if isinstance(packed_list, list):
         return []
-    return [item.strip(" '") for item in packed_list.split(", ") if item.strip(" '")]
+    else:
+        packed_list = packed_list.strip("[]")
+        return [item.strip(" '") for item in packed_list.split(", ") if item.strip(" '")]
 
 def read_rs_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerchannel: str) -> Tuple[dict, dict]:
     """
@@ -114,47 +113,95 @@ def read_rs_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
             nrun += 1
         except:
             break
-    
+
     error_code = 0
     rs = []
     tones = []
-
-    if nrun > 0:
-        trigger = arange(len(rawd4))[rawd4>0.5]	
-        diff = trigger[1:] - trigger[:-1]
-        tonestart = trigger[concatenate((array([True]),diff>300.))]
-
-        ntones = 0
-        for key in header_file:
-            if key[0:5] == 'tone_':
-                ntones += 1
-    
-        if len(tonestart) != ntones:  		
-            print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}, wrong number of tones filtered ({len(tonestart)}/{ntones}).")
-            error_code = 1 # wrong number of tones filtered
-
-        for i, pos in enumerate(tonestart):
-
-            rp = rawd[int(pos-tbefore/dt):int(pos+tduration/dt+tafter/dt+1)]
-            padding_length = (int(pos+tduration/dt+tafter/dt+1) - int(pos-tbefore/dt)) - len(rp)
-            padding = np.zeros(padding_length, dtype=rp.dtype)
-
-            rs.append({
-                "toneid": f"{PathToDFile[-7:-3]}_{str(i)}",
-                "response": np.concatenate((rp, padding))
-            })
-            tones.append({
-                "toneid": f"{PathToDFile[-7:-3]}_{str(i)}",
-                "frequency": header_file['tone_number_%03d' % i][0],
-                "level": header_file['tone_number_%03d' % i][1],
-                "else": list(header_file['tone_number_%03d' % i][2:])
-            })
-
-    else:
+    if nrun == 0:
         print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}, wrong format of labels.")
         error_code = 2 # wrong format
+    
+    if error_code == 0:
+        trigger = arange(len(rawd4))[rawd4>0.5]
+        if len(trigger) == 0:
+            print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]} the threshold for the trigger returned an empty list of indices.")
+            error_code = 3
+        if error_code == 0:
+            diff = trigger[1:] - trigger[:-1]
+            tonestart = trigger[concatenate((array([True]),diff>300.))]
+            ntones = 0
+            for key in header_file:
+                if key[0:5] == 'tone_':
+                    ntones += 1
+            if len(tonestart) != ntones:  		
+                print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}, wrong number of tones filtered ({len(tonestart)}/{ntones}).")
+                error_code = 1 # wrong number of tones filtered
+            if error_code == 0:
+                for i, pos in enumerate(tonestart):
+
+                    rp = rawd[int(pos-tbefore/dt):int(pos+tduration/dt+tafter/dt+1)]
+                    padding_length = (int(pos+tduration/dt+tafter/dt+1) - int(pos-tbefore/dt)) - len(rp)
+                    padding = np.zeros(padding_length, dtype=rp.dtype)
+
+                    rs.append({
+                        "toneid": f"{PathToDFile[-7:-3]}_{str(i)}",
+                        "response": np.concatenate((rp, padding))
+                    })
+                    tones.append({
+                        "toneid": f"{PathToDFile[-7:-3]}_{str(i)}",
+                        "frequency": header_file['tone_number_%03d' % i][0],
+                        "level": header_file['tone_number_%03d' % i][1],
+                        "else": list(header_file['tone_number_%03d' % i][2:])
+                    })
 
     return rs, tones, error_code
+
+    # if nrun == 0:
+    #     print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}, wrong datachannel or triggerchannel labels or empty pickle files.")
+    #     return [], [], 2 
+    
+    # trigger = np.arange(len(rawd4))[rawd4 > 0.5]
+    # if len(trigger) == 0:
+    #     print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}: threshold for the trigger returned an empty list of indices.")
+    #     return [], [], 3
+
+    # diff = trigger[1:] - trigger[:-1]
+    # tonestart = trigger[np.concatenate(([True], diff > 300.))]
+
+    # ntones = 0
+    # for key in header_file:
+    #     if key[0:5] == 'tone_':
+    #         ntones += 1
+
+    # if len(tonestart) != ntones:
+    #     print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}, wrong number of tones filtered ({len(tonestart)}/{ntones}).")
+    #     return [], [], 1
+
+    # rs = []
+    # tones = []
+    # for i, pos in enumerate(tonestart):
+    #     tone_id = f"{PathToDFile[-7:-3]}_{i}"
+        
+    #     start_idx = int(pos - tbefore / dt)
+    #     end_idx = int(pos + tduration / dt + tafter / dt + 1)
+
+    #     rp = rawd4[start_idx:end_idx]
+    #     padding_length = max(0, end_idx - start_idx - len(rp))  # Ensure non-negative padding
+    #     padding = np.zeros(padding_length, dtype=rp.dtype)
+
+    #     rs.append({
+    #         "toneid": tone_id,
+    #         "response": np.concatenate((rp, padding))
+    #     })
+    #     tones.append({
+    #         "toneid": tone_id,
+    #         "frequency": header_file[f'tone_number_{i:03d}'][0],
+    #         "level": header_file[f'tone_number_{i:03d}'][1],
+    #         "else": list(header_file[f'tone_number_{i:03d}'][2:])
+    #     })
+
+    #     return rs, tones, 0
+
 
 def read_rs(path_to_dir: str, files: list[str],
             datachannel: str, triggerchannel: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
