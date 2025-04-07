@@ -68,7 +68,7 @@ def width(arr: np.array, window = None):
 
 
 tbefore = 20.
-tafter = 100.
+tafter = 80.
 tduration = 50.
 rate = 10000
 dt = 1000./rate
@@ -117,10 +117,14 @@ def read_rs_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
     error_code = 0
     rs = []
     tones = []
+    freq_spls = set()
+    freq = set()
+    spls = set()
+
     if nrun == 0:
         print(f"{datetime.now()} - Warning: Error in file {PathToDFile[-14:-3]}, wrong format of labels.")
         error_code = 2 # wrong format
-    
+
     if error_code == 0:
         trigger = arange(len(rawd4))[rawd4>0.5]
         if len(trigger) == 0:
@@ -139,20 +143,28 @@ def read_rs_file(PathToDFile: str, PathToHFile: str, datachannel: str, triggerch
             if error_code == 0:
                 for i, pos in enumerate(tonestart):
 
-                    rp = rawd[int(pos-tbefore/dt):int(pos+tduration/dt+tafter/dt+1)]
-                    padding_length = (int(pos+tduration/dt+tafter/dt+1) - int(pos-tbefore/dt)) - len(rp)
+                    rp = rawd[int(pos-tbefore/dt):int(pos+tduration/dt+tafter/dt-time_window_adjust/dt)]
+                    padding_length = (int(pos+tduration/dt+tafter/dt-time_window_adjust/dt) - int(pos-tbefore/dt)) - len(rp)
                     padding = np.zeros(padding_length, dtype=rp.dtype)
 
+                    frq = header_file['tone_number_%03d' % i][0]
+                    spl = header_file['tone_number_%03d' % i][1]
                     rs.append({
                         "toneid": f"{PathToDFile[-7:-3]}_{str(i)}",
                         "response": np.concatenate((rp, padding))
-                    })
+                    }) 
                     tones.append({
                         "toneid": f"{PathToDFile[-7:-3]}_{str(i)}",
-                        "frequency": header_file['tone_number_%03d' % i][0],
-                        "level": header_file['tone_number_%03d' % i][1],
+                        "frequency": frq,
+                        "level": spl,
                         "else": list(header_file['tone_number_%03d' % i][2:])
                     })
+                    freq.add(frq)
+                    spls.add(spl)
+                    freq_spls.add(f"{frq},{spl}")
+
+    if len(freq) * len(spls) != len(freq_spls):
+        error_code = 4
 
     return rs, tones, error_code
 
@@ -261,12 +273,12 @@ def fra(activity_matrix: np.array,
 
         # Get the threshold as the maximum point of curvature
         activity_level = np.flip(activity_level)
-        sod_activity_level = activity_level[0:-2] - 2 * activity_level[1:-1] + activity_level[2:]
-        if max(sod_activity_level) < 1: # to accept min dB this value has to be tested
-            maximum_curvature_level = 0
-        else:
-            maximum_curvature_level = np.argmax(sod_activity_level) + 1
-        level_threshold_index = -(1 + maximum_curvature_level)
+        # sod_activity_level = activity_level[0:-2] - 2 * activity_level[1:-1] + activity_level[2:]
+        # if max(sod_activity_level) < 1: # to accept min dB this value has to be tested
+        #     maximum_curvature_level = 0
+        # else:
+        #     maximum_curvature_level = np.argmax(sod_activity_level) + 1
+        # level_threshold_index = -(1 + maximum_curvature_level)
 
         # boundary = np.zeros(matrix.shape[1])
         # for n, activity in enumerate(activity_frequency):
@@ -309,6 +321,7 @@ def get_rs_activity(rs: pd.DataFrame,
     )
 
     activity_matrix = np.empty((len(spls), len(freq)), dtype=float)
+    print(activity_matrix.shape)
     for i, (index, row) in enumerate(rs.iterrows()):
         activity_matrix[i // n_freq, i % n_freq] = row['activity']
 
@@ -434,7 +447,7 @@ def plot_traces(rs: pd.DataFrame,
     """
     """
 
-    time_range = arange(-tbefore,tduration+tafter+dt-time_window_adjust,dt)
+    time_range = arange(-tbefore,tduration+tafter-time_window_adjust,dt)
     rs = rs.sort_values(by=['level', 'frequency'], ascending=[False, True])
     freq = rs['frequency'].unique()
     rs = rs[rs['frequency'].isin(freq[selected_freq])]
@@ -472,7 +485,7 @@ def plot_traces(rs: pd.DataFrame,
 
         # Show y-axis label and add y-axis line only if this is the leftmost column
         if row["frequency"] == min_frq:
-            ax.set_ylabel(f'{int(round(row["level"], 0))} dB')
+            ax.set_ylabel(f'{int(round(row["level"], 0))} dB \n voltage (mV)')
         else:
             ax.get_yaxis().set_visible(False)
 

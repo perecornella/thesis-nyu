@@ -53,6 +53,7 @@ class AppDemo(QWidget):
         self.visualization = "all traces"
         self.set_first_directory_and_checkpoint()
         self.update_files_list()
+        self.update_directories_list()
         self.load_data_on_checkpoint()
         self.chart = Canvas(self)
         self.create_widgets()
@@ -84,16 +85,16 @@ class AppDemo(QWidget):
             self.non_checked_files = get_filenames(row['non checked files'])
             self.checked_files = get_filenames(row['checked files'])
             if len(self.non_checked_files) > 0:
-                self.dir = row['name']
+                self.dir = row['directory']
                 all_checked = False 
                 break
             elif len(self.checked_files) > 0:
                 aux_row = row
         if all_checked:
             print(f"{datetime.now()} - Congrats! You annotated all the files in your dataset.")
-            self.dir = aux_row['name']
+            self.dir = aux_row['directory']
 
-        dir_info = progress[progress['name'] == self.dir].iloc[0]
+        dir_info = progress[progress['directory'] == self.dir].iloc[0]
         self.non_checked_files = get_filenames(dir_info['non checked files'])
         self.checked_files = get_filenames(dir_info['checked files'])
         self.error_files = get_filenames(dir_info['error files'])
@@ -106,17 +107,57 @@ class AppDemo(QWidget):
             print(f"{datetime.now()} - Warning: the directory only has error files.")
             QMessageBox.warning(self, "Message", "The directory only has error files.")
 
+    def update_directories_list(self):
+
+        self.directories_with_tags_list = sorted([
+            f"{row['directory']} ({len(get_filenames(row['checked files']))}/{len(get_filenames(row['non checked files']))+\
+                                                                         len(get_filenames(row['checked files']))})"
+            for i, row in progress.iterrows()
+        ])
+
     def update_files_list(self):
         self.files_list = sorted([
             file for file in list(self.non_checked_files) + list(self.checked_files)
             if not any(error_file.startswith(file) for error_file in self.error_files)
         ])
+        
+        always_full_columns = ['directory', 'filename', 'channel', 'entrydate', 'version']
 
         self.files_with_tags_list = sorted([
-            f"{file} (checked)" if file in self.checked_files else file
+            f"{file}"
+            + (" *" if any(
+                entry.drop(columns=(['note'] + always_full_columns)).notna().sum().any()
+                for entry in [annotations[
+                    (annotations['directory'] == self.dir) &
+                    (annotations['filename'] == file) &
+                    (annotations['channel'] == "di0P")
+                ]]
+            ) else "")
+            + (" **" if any(
+                entry.drop(columns=(['note'] + always_full_columns)).notna().sum().any()
+                for entry in [annotations[
+                    (annotations['directory'] == self.dir) &
+                    (annotations['filename'] == file) &
+                    (annotations['channel'] == "di2P")
+                ]]
+            ) else "")
+            + (" (note)" if any(
+                entry['note'].notna().any()
+                for entry in [annotations[
+                    (annotations['directory'] == self.dir) &
+                    (annotations['filename'] == file) &
+                    ((annotations['channel'] == "di0P") | (annotations['channel'] == "di2P"))
+                ]]
+            ) else "")
             for file in list(self.non_checked_files) + list(self.checked_files)
             if not any(error_file.startswith(file) for error_file in self.error_files)
         ])
+
+        # self.files_with_tags_list = sorted([
+        #     f"{file} (checked)" if file in self.checked_files else file
+        #     for file in list(self.non_checked_files) + list(self.checked_files)
+        #     if not any(error_file.startswith(file) for error_file in self.error_files)
+        # ])
 
     def load_data_on_checkpoint(self):
 
@@ -140,7 +181,7 @@ class AppDemo(QWidget):
             else:
                 print(f"{datetime.now()} - Message: {self.dir}{self.checkpoint} is an error file, skipping to the next one.")
                 
-                dir_index = progress[progress['name'] == self.dir].index
+                dir_index = progress[progress['directory'] == self.dir].index
                 self.non_checked_files.remove(self.checkpoint)
                 self.error_files.append(*error_files)
                 progress.at[dir_index[0], 'error files'] = self.error_files
@@ -167,7 +208,7 @@ class AppDemo(QWidget):
 
         # Directory options
         self.directory_combobox = QComboBox()
-        self.directory_combobox.addItems(progress['name'].unique())
+        self.directory_combobox.addItems(self.directories_with_tags_list)
         self.directory_combobox.currentIndexChanged.connect(self.on_directory_selected)
         self.directory_layout = QHBoxLayout()
         self.directory_layout.addWidget(self.directory_combobox)
@@ -221,16 +262,16 @@ class AppDemo(QWidget):
         self.tuned_box.setLayout(self.tuned_button_layout)
 
         # Clear button
-        self.exemplar_button_group = QButtonGroup(self)
-        self.exemplar_layout = QHBoxLayout()
-        self.exemplar_button_yes = QRadioButton("Yes")
-        self.exemplar_button_no = QRadioButton("No")
-        self.exemplar_layout.addWidget(self.exemplar_button_yes)
-        self.exemplar_layout.addWidget(self.exemplar_button_no)
-        self.exemplar_button_group.addButton(self.exemplar_button_yes)
-        self.exemplar_button_group.addButton(self.exemplar_button_no)
-        self.exemplar_box = QGroupBox("Exemplar Options")
-        self.exemplar_box.setLayout(self.exemplar_layout)
+        self.clear_button_group = QButtonGroup(self)
+        self.clear_layout = QHBoxLayout()
+        self.clear_button_yes = QRadioButton("Yes")
+        self.clear_button_no = QRadioButton("No")
+        self.clear_layout.addWidget(self.clear_button_yes)
+        self.clear_layout.addWidget(self.clear_button_no)
+        self.clear_button_group.addButton(self.clear_button_yes)
+        self.clear_button_group.addButton(self.clear_button_no)
+        self.clear_box = QGroupBox("Clear Options")
+        self.clear_box.setLayout(self.clear_layout)
 
         # Healthy button
         self.healthy_button_group = QButtonGroup(self)
@@ -282,7 +323,7 @@ class AppDemo(QWidget):
         self.form_c1_layout.addWidget(self.type_box)
         self.form_c2_layout = QVBoxLayout()
         self.form_c2_layout.addWidget(self.tuned_box)
-        self.form_c2_layout.addWidget(self.exemplar_box)
+        self.form_c2_layout.addWidget(self.clear_box)
         self.form_c3_layout = QVBoxLayout()
         self.form_c3_layout.addWidget(self.bf_box)
         self.form_c3_layout.addWidget(self.level_box)
@@ -401,14 +442,14 @@ class AppDemo(QWidget):
             self.tuned_button_group.setExclusive(False)
             self.tuned_button_yes.setChecked(False)
             self.tuned_button_no.setChecked(False)
-            self.exemplar_button_group.setExclusive(False)
-            self.exemplar_button_yes.setChecked(False)
-            self.exemplar_button_no.setChecked(False)
+            self.clear_button_group.setExclusive(False)
+            self.clear_button_yes.setChecked(False)
+            self.clear_button_no.setChecked(False)
             self.healthy_button_group.setExclusive(False)
             self.healthy_button_yes.setChecked(False)
             self.healthy_button_no.setChecked(False)
             self.tuned_button_group.setExclusive(True)
-            self.exemplar_button_group.setExclusive(True)
+            self.clear_button_group.setExclusive(True)
             self.healthy_button_group.setExclusive(True)
             self.type_combobox.setCurrentText("-")
             self.level_combobox.setCurrentText("-")
@@ -418,8 +459,8 @@ class AppDemo(QWidget):
         if not self.existing_entry.empty:
             self.tuned_button_yes.setChecked(self.existing_entry['tuned'].iloc[0] == "Yes")
             self.tuned_button_no.setChecked(self.existing_entry['tuned'].iloc[0] == "No")
-            self.exemplar_button_yes.setChecked(self.existing_entry['exemplar'].iloc[0] == "Yes")
-            self.exemplar_button_no.setChecked(self.existing_entry['exemplar'].iloc[0] == "No")
+            self.clear_button_yes.setChecked(self.existing_entry['clear'].iloc[0] == "Yes")
+            self.clear_button_no.setChecked(self.existing_entry['clear'].iloc[0] == "No")
             self.healthy_button_yes.setChecked(self.existing_entry['healthy'].iloc[0] == "Yes")
             self.healthy_button_no.setChecked(self.existing_entry['healthy'].iloc[0] == "No")
             self.type_combobox.setCurrentText(f"{self.existing_entry['type'].iloc[0]}")
@@ -446,7 +487,7 @@ class AppDemo(QWidget):
         print(f"{datetime.now()} - Action: send button clicked.")
 
         tuned = "Yes" if self.tuned_button_yes.isChecked() else "No" if self.tuned_button_no.isChecked() else None
-        exemplar = "Yes" if self.exemplar_button_yes.isChecked() else "No" if self.exemplar_button_no.isChecked() else None
+        clear = "Yes" if self.clear_button_yes.isChecked() else "No" if self.clear_button_no.isChecked() else None
         healthy = "Yes" if self.healthy_button_yes.isChecked() else "No" if self.healthy_button_no.isChecked() else None
         selected_type = self.type_combobox.currentText() if self.type_combobox.currentText() != "-" else None
         best_frequency = float(self.bf_combobox.currentText()[:-4]) if self.bf_combobox.currentText() != "-" else None
@@ -462,7 +503,7 @@ class AppDemo(QWidget):
             'filename': self.checkpoint,
             'channel': self.datachannel,
             'tuned': tuned,
-            'exemplar': exemplar,
+            'clear': clear,
             'healthy': healthy,
             'type': selected_type,
             'best frequency': best_frequency,
@@ -473,12 +514,13 @@ class AppDemo(QWidget):
             'y': y,
             'z': z,
             'entrydate': datetime.now(),
-            'version': version
+            'version': version,
+            'user': user
         }
 
         confirmation_message = f"\
             Tuned: {tuned}\n\
-            Clear: {exemplar}\n\
+            Clear: {clear}\n\
             Healthy: {healthy}\n\
             Type: {selected_type}\n\
             Best frequency :{best_frequency}\n\
@@ -510,7 +552,7 @@ class AppDemo(QWidget):
             self.non_checked_files.remove(self.checkpoint)
         if self.checkpoint not in self.checked_files:
             self.checked_files.append(self.checkpoint)
-        dir_index = progress[progress['name'] == self.dir].index
+        dir_index = progress[progress['directory'] == self.dir].index
         progress.at[dir_index[0], 'non checked files'] = self.non_checked_files
         progress.at[dir_index[0], 'checked files'] = self.checked_files
         progress.to_csv(progress_path, index=False)
@@ -546,7 +588,7 @@ class AppDemo(QWidget):
                 self.non_checked_files.remove(self.checkpoint)
             if self.checkpoint in self.checked_files:
                 self.checked_files.remove(self.checkpoint)
-            dir_index = progress[progress['name'] == self.dir].index
+            dir_index = progress[progress['directory'] == self.dir].index
             progress.at[dir_index[0], 'non checked files'] = self.non_checked_files
             progress.at[dir_index[0], 'checked files'] = self.checked_files
             progress.to_csv(progress_path, index=False)
@@ -609,8 +651,8 @@ class AppDemo(QWidget):
 
     def on_directory_selected(self, index):
 
-        self.dir = self.directory_combobox.itemText(index)
-        dir_info = progress[progress['name'] == self.dir].iloc[0]
+        self.dir = self.directory_combobox.itemText(index).split(' ')[0]
+        dir_info = progress[progress['directory'] == self.dir].iloc[0]
 
         self.non_checked_files = get_filenames(dir_info['non checked files'])
         self.checked_files = get_filenames(dir_info['checked files'])
@@ -665,8 +707,11 @@ class AppDemo(QWidget):
         elif self.channel_combobox.itemText(index) == "Channel 4":
             self.datachannel = "di4P"
         self.load_data_on_checkpoint()
+        self.update_files_list()
         self.update_widgets()
         self.update_dashboard()
+        # self.update_file_combobox()
+        # self.file_combobox.setCurrentText(next(item for item in self.files_with_tags_list if item.startswith(self.checkpoint)))
 
     def closeEvent(self, event):
         print(f"{datetime.now()} - Action: exit button clicked.")
@@ -687,27 +732,27 @@ if __name__ == "__main__":
 
     user = sys.argv[1]
     version = sys.argv[2]
+    shape, channel, mean, symmetry = sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6]
 
     if user == "perecornella":
         root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
     elif user == "ar65":
         root_dir = "/Users/ar65/Library/CloudStorage/GoogleDrive-ar65@nyu.edu/My Drive/ReyesLabNYU/"
     else:
-        root_dir = "toy_dataset/"
+        sys.exit(1) # TODO
 
-    progress_path = f'./users/{user}/metadata/progress.csv'
-    annotations_path = f'./users/{user}/metadata/annotations.csv'
-    discarded_path = f'./users/{user}/metadata/discarded.csv'
-
+    progress_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv'
+    annotations_path = root_dir + f'Pere/metadata/annotations.csv'
+    discarded_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_discarded.csv'
     progress = pd.read_csv(progress_path)
     try:
         annotations = pd.read_csv(annotations_path)
     except:
         annotations = pd.DataFrame(columns=['directory', 'filename', 'channel',
-                                         'tuned', 'exemplar', 'healthy','type',
+                                         'tuned', 'clear', 'healthy','type',
                                          'best frequency', 'level threshold','note',
                                          'x', 'xf', 'y', 'z',
-                                         'entrydate', 'version'])
+                                         'entrydate', 'version', 'user'])
     progress = pd.read_csv(progress_path)
     try:
         discarded = pd.read_csv(discarded_path)

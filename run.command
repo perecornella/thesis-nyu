@@ -26,14 +26,12 @@ find venv -mindepth 1 -maxdepth 1 ! -name "$version" -exec rm -rf {} +
 source "./venv/$version/bin/activate"
 pip3 install -r "./config/requirements.txt" > /dev/null 2>&1
 
-# Create the metadata folder
-metadata_dir="users/$user/metadata"
-if [ ! -d "$metadata_dir" ]; then
-    mkdir -p "$metadata_dir"
-    python3 "crawl.py" $user $version
-fi
-
-python3 "gui.py" $user $version
+shape=15_4 # [all, ...]
+channel=di0P # [all, di0P, di1P, di2P, di3P]
+mean=all # [all, zeromean, other]
+symmetry=asymmetric # [all, asymmetric, symmetric]
+python3 "filter.py" $user $version $shape $channel $mean $symmetry
+python3 "gui.py" $user $version $shape $channel $mean $symmetry
 
 echo "Program finished!"
 
