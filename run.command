@@ -26,10 +26,10 @@ find venv -mindepth 1 -maxdepth 1 ! -name "$version" -exec rm -rf {} +
 source "./venv/$version/bin/activate"
 pip3 install -r "./config/requirements.txt" > /dev/null 2>&1
 
-shape=15_4 # [all, ...]
-channel=di0P # [all, di0P, di1P, di2P, di3P]
+shape=all # [all, ...]
+channel=all # [all, di0P, di1P, di2P, di3P]
 mean=all # [all, zeromean, other]
-symmetry=asymmetric # [all, asymmetric, symmetric]
+symmetry=all # [all, asymmetric, symmetric]
 python3 "filter.py" $user $version $shape $channel $mean $symmetry
 python3 "gui.py" $user $version $shape $channel $mean $symmetry
 

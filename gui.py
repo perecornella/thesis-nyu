@@ -1,46 +1,139 @@
 import sys
-import pandas as pd
 import numpy as np
+import pandas as pd
+from PyQt5.QtCore import Qt
 from datetime import datetime
 import matplotlib.pyplot as plt
-from utils import fra_dashboard, read_rs, plot_traces, get_rs_activity, get_filenames
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QRadioButton,
-                             QHBoxLayout, QLineEdit, QLabel, QComboBox, QMessageBox,
-                             QButtonGroup, QGroupBox, QShortcut)
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtCore import Qt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from utils import fra_dashboard, read_rs, plot_traces, get_rs_activity, get_filenames
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QRadioButton,
+                             QHBoxLayout, QLineEdit, QLabel, QComboBox, QMessageBox, QButtonGroup,
+                             QGroupBox, QShortcut)
 
 class Canvas(FigureCanvas):
+    """
+    A custom matplotlib canvas for visualizing auditory response data
+    within a Qt application.
+
+    Parameters:
+    -----------
+    parent : QWidget
+        The parent widget, expected to have the following attributes:
+            - rs: list
+                A list of response structures (e.g., recordings or analysis results).
+            - visualization: str
+                Determines the type of visualization. Should be one of:
+                    - "all traces": Plot all traces for each frequency.
+                    - "highest activity traces": Plot traces around the frequency with highest activity.
+                    - "activity plots": Plot summary activity heatmaps and metrics.
+            - chart_title: str
+                The title to be used for the generated figure.
+            - bf_options_list: list (will be set)
+                List of best frequency options in kHz (rounded).
+            - level_options_list: list (will be set)
+                List of sound pressure levels in dB (rounded).
+
+    Behavior:
+    ---------
+    - If `parent.rs` is not empty:
+        - Extracts activity metrics from the response structure using `get_rs_activity()`.
+        - Updates `parent.bf_options_list` and `parent.level_options_list` with available values.
+        - Depending on `parent.visualization`, generates the appropriate figure:
+            - "all traces": uses `plot_traces()` for all frequencies.
+            - "highest activity traces": finds the peak frequency and plots nearby traces.
+            - "activity plots": uses `fra_dashboard()` to visualize frequency-response areas.
+    - If `parent.rs` is empty:
+        - Initializes an empty figure.
+        - Sets the options lists to empty.
+
+    Notes:
+    ------
+    This class subclasses `FigureCanvas` from `matplotlib.backends.backend_qt5agg`, 
+    allowing integration of matplotlib plots into a PyQt5 application.
+    """
 
     def __init__(self, parent):
 
         if len(parent.rs) != 0:
-            # Create the figure using the plot_dashboard function
+            
             matrix, activity_frequency, activity_level, spls, freq = get_rs_activity(parent.rs)
             parent.bf_options_list = [f"{round(f/1000,1)} kHz" for f in freq]
             parent.level_options_list = [f"{round(s,0)} dB" for s in spls]
 
             if parent.visualization == "all traces":
-                self.fig = plot_traces(parent.rs, range(len(freq)), filename=parent.chart_title)
+                self.fig = plot_traces(parent.rs, range(len(freq)), parent.datachannel)
         
             elif parent.visualization == "highest activity traces":
                 bf_index = np.argmax(activity_frequency)
                 min_index = max(0, bf_index - 1)
                 max_index = min(len(freq), bf_index + 2)
-                self.fig = plot_traces(parent.rs, range(min_index, max_index), filename=parent.chart_title)
+                self.fig = plot_traces(parent.rs, range(min_index, max_index), parent.datachannel)
 
             elif parent.visualization == "activity plots":
-                self.fig = fra_dashboard(matrix, parent.chart_title, activity_frequency, activity_level, spls, freq)
+                self.fig = fra_dashboard(matrix, activity_frequency, activity_level, spls, freq)
         else:
             self.fig = plt.figure(figsize=(16,8))
             parent.bf_options_list = []
             parent.level_options_list = []
 
-        super().__init__(self.fig)  # Pass the figure to the FigureCanvas constructor
-        self.setParent(parent)  # Set the parent for the canvas
+        super().__init__(self.fig)  
+        self.setParent(parent) 
 
 class AppDemo(QWidget):
+    """
+    A PyQt5 GUI application for visualizing and annotating electrophysiological recordings.
+
+    The app loads data files from a given directory, allows navigation across recordings, and provides 
+    interactive widgets to annotate various properties (e.g., whether the signal is tuned, clear, healthy,
+    its type, best frequency, threshold level, and spatial coordinates). Visualizations are displayed using
+    embedded matplotlib figures, and annotations are saved to CSV files.
+
+    Parameters
+    ----------
+    input_directory : str, optional
+        Path to the directory containing electrophysiological recordings. Not directly used in `__init__`, 
+        but assumed to be handled internally via global `progress`.
+    input_file : str, optional
+        Specific file to load first, if set. Otherwise, the first available file from the progress list is used.
+
+    Core Features
+    -------------
+    - **Navigation**: Use "Next" and "Back" buttons or keyboard shortcuts (Alt+M/N) to iterate through files.
+    - **Annotations**: Mark recordings as "Tuned", "Clear", "Healthy", and set additional metadata such as type,
+      best frequency, threshold level, and note.
+    - **Visualization**: Select from:
+        - "All traces": Show raw traces across all stimulus conditions.
+        - "Highest activity traces": Focus on conditions with strongest response.
+        - "Activity plots": Display frequency-response area heatmaps.
+    - **Channel Selection**: Choose different data channels to visualize (e.g., "di0P", "di1P", etc.).
+    - **Shortcuts**:
+        - Alt+M → Next
+        - Alt+N → Back
+        - Alt+Enter → Send annotation
+        - Alt+Backspace → Discard file
+
+    Components
+    ----------
+    - File/directory dropdowns for selection
+    - Annotation controls (radio buttons, combo boxes, text fields)
+    - Plot canvas (`Canvas` class) embedded in the interface
+    - Coordination entry fields (x0, xf, y, z)
+    - Annotation buttons (Send, Discard, Next, Back)
+    
+    File & State Handling
+    ---------------------
+    - Uses global `progress`, `annotations`, and `discarded` DataFrames to manage state.
+    - Automatically skips error files and updates CSVs upon annotation/discard.
+    - Annotated files are recorded as "checked"; unannotated files remain in "non checked".
+
+    Notes
+    -----
+    - File naming, state transition, and combo box update logic is critical for consistent annotation flow.
+    - All annotation data is saved as a new row or update to `annotations.csv`.
+    - This tool is intended for use in structured electrophysiology studies with multiple stimuli and recording sessions.
+    """
+
 
     def __init__(self, input_directory=None, input_file=None):
 
@@ -110,8 +203,7 @@ class AppDemo(QWidget):
     def update_directories_list(self):
 
         self.directories_with_tags_list = sorted([
-            f"{row['directory']} ({len(get_filenames(row['checked files']))}/{len(get_filenames(row['non checked files']))+\
-                                                                         len(get_filenames(row['checked files']))})"
+            f"{row['directory']} ({len(get_filenames(row['checked files']))}/{len(get_filenames(row['non checked files']))+len(get_filenames(row['checked files']))})"
             for i, row in progress.iterrows()
         ])
 
@@ -125,7 +217,7 @@ class AppDemo(QWidget):
 
         self.files_with_tags_list = sorted([
             f"{file}"
-            + (" *" if any(
+            + (" : c0" if any(
                 entry.drop(columns=(['note'] + always_full_columns)).notna().sum().any()
                 for entry in [annotations[
                     (annotations['directory'] == self.dir) &
@@ -133,7 +225,7 @@ class AppDemo(QWidget):
                     (annotations['channel'] == "di0P")
                 ]]
             ) else "")
-            + (" **" if any(
+            + (" : c2" if any(
                 entry.drop(columns=(['note'] + always_full_columns)).notna().sum().any()
                 for entry in [annotations[
                     (annotations['directory'] == self.dir) &
@@ -141,7 +233,23 @@ class AppDemo(QWidget):
                     (annotations['channel'] == "di2P")
                 ]]
             ) else "")
-            + (" (note)" if any(
+            + (" : c1" if any(
+                entry.drop(columns=(['note'] + always_full_columns)).notna().sum().any()
+                for entry in [annotations[
+                    (annotations['directory'] == self.dir) &
+                    (annotations['filename'] == file) &
+                    (annotations['channel'] == "di1P")
+                ]]
+            ) else "")
+            + (" : c3" if any(
+                entry.drop(columns=(['note'] + always_full_columns)).notna().sum().any()
+                for entry in [annotations[
+                    (annotations['directory'] == self.dir) &
+                    (annotations['filename'] == file) &
+                    (annotations['channel'] == "di3P")
+                ]]
+            ) else "")
+            + (" : (note)" if any(
                 entry['note'].notna().any()
                 for entry in [annotations[
                     (annotations['directory'] == self.dir) &
@@ -152,12 +260,6 @@ class AppDemo(QWidget):
             for file in list(self.non_checked_files) + list(self.checked_files)
             if not any(error_file.startswith(file) for error_file in self.error_files)
         ])
-
-        # self.files_with_tags_list = sorted([
-        #     f"{file} (checked)" if file in self.checked_files else file
-        #     for file in list(self.non_checked_files) + list(self.checked_files)
-        #     if not any(error_file.startswith(file) for error_file in self.error_files)
-        # ])
 
     def load_data_on_checkpoint(self):
 
@@ -206,7 +308,6 @@ class AppDemo(QWidget):
 
     def create_widgets(self):
 
-        # Directory options
         self.directory_combobox = QComboBox()
         self.directory_combobox.addItems(self.directories_with_tags_list)
         self.directory_combobox.currentIndexChanged.connect(self.on_directory_selected)
@@ -214,8 +315,6 @@ class AppDemo(QWidget):
         self.directory_layout.addWidget(self.directory_combobox)
         self.directory_box = QGroupBox("Select directory")
         self.directory_box.setLayout(self.directory_layout)
-
-        # File options
         self.file_combobox = QComboBox()
         self.file_combobox.addItems(self.files_with_tags_list)
         self.file_combobox.currentIndexChanged.connect(self.on_file_selected)
@@ -223,8 +322,6 @@ class AppDemo(QWidget):
         self.file_layout.addWidget(self.file_combobox)
         self.file_box = QGroupBox("Select file")
         self.file_box.setLayout(self.file_layout)
-
-        # Visualization options
         self.visualization_combobox = QComboBox()
         self.visualization_combobox.addItems(["All traces", "Highest activity traces", "Activity plots"])
         self.visualization_combobox.currentIndexChanged.connect(self.on_vis_selected)
@@ -232,8 +329,6 @@ class AppDemo(QWidget):
         self.visualization_layout.addWidget(self.visualization_combobox)
         self.visualization_box = QGroupBox("Select visualization")
         self.visualization_box.setLayout(self.visualization_layout)
-
-        # Channel options
         self.channel_combobox = QComboBox()
         self.channel_combobox.addItems(["Channel 0", "Channel 2", "Channel 1", "Channel 3", "Channel 4"])
         self.channel_combobox.currentIndexChanged.connect(self.on_channel_selected)
@@ -241,15 +336,11 @@ class AppDemo(QWidget):
         self.channel_layout.addWidget(self.channel_combobox)
         self.channel_box = QGroupBox("Select channel")
         self.channel_box.setLayout(self.channel_layout)
-
-        # Chart options layout
         self.vis_options_layout = QHBoxLayout()
         self.vis_options_layout.addWidget(self.directory_box)
         self.vis_options_layout.addWidget(self.file_box)
         self.vis_options_layout.addWidget(self.visualization_box)
         self.vis_options_layout.addWidget(self.channel_box)
-
-        # Tuned button
         self.tuned_button_group = QButtonGroup(self)
         self.tuned_button_layout = QHBoxLayout()
         self.tuned_button_yes = QRadioButton("Yes")
@@ -260,8 +351,6 @@ class AppDemo(QWidget):
         self.tuned_button_group.addButton(self.tuned_button_no)
         self.tuned_box = QGroupBox("Tuned Options")
         self.tuned_box.setLayout(self.tuned_button_layout)
-
-        # Clear button
         self.clear_button_group = QButtonGroup(self)
         self.clear_layout = QHBoxLayout()
         self.clear_button_yes = QRadioButton("Yes")
@@ -272,8 +361,6 @@ class AppDemo(QWidget):
         self.clear_button_group.addButton(self.clear_button_no)
         self.clear_box = QGroupBox("Clear Options")
         self.clear_box.setLayout(self.clear_layout)
-
-        # Healthy button
         self.healthy_button_group = QButtonGroup(self)
         self.healthy_layout = QHBoxLayout()
         self.healthy_button_yes = QRadioButton("Yes")
@@ -284,40 +371,29 @@ class AppDemo(QWidget):
         self.healthy_button_group.addButton(self.healthy_button_no)
         self.healthy_box = QGroupBox("Healthy Options")
         self.healthy_box.setLayout(self.healthy_layout)
-
-        # Intra/Extra question for Type
         self.type_combobox = QComboBox()
         self.type_combobox.addItems(["-", "Cell-attached", "Extracellular", "Whole-cell"])
         self.type_layout = QHBoxLayout()
         self.type_layout.addWidget(self.type_combobox)
         self.type_box = QGroupBox("Type Options")
-        self.type_box.setLayout(self.type_layout)
-        
-        # Best frequency option
+        self.type_box.setLayout(self.type_layout)        
         self.bf_combobox = QComboBox()
         self.bf_combobox.addItems(["-"] + self.bf_options_list)
         self.bf_layout = QHBoxLayout()
         self.bf_layout.addWidget(self.bf_combobox)
         self.bf_box = QGroupBox("Best frequency Options")
         self.bf_box.setLayout(self.bf_layout)
-
-        # Threshold level option
         self.level_combobox = QComboBox()
         self.level_combobox.addItems(["-"] + self.level_options_list)
         self.level_layout = QHBoxLayout()
         self.level_layout.addWidget(self.level_combobox)
         self.level_box = QGroupBox("Threshold level Options")
         self.level_box.setLayout(self.level_layout)
-
-        # Notes box
         self.notes_layout = QHBoxLayout()
         self.note = QLineEdit()
         self.notes_layout.addWidget(self.note)
         self.notes_box = QGroupBox("Note")
         self.notes_box.setLayout(self.notes_layout)
-        # self.note.setText(self.existing_entry['note'].iloc[0] if not self.existing_entry.empty else "")
-
-        # Form layout
         self.form_c1_layout = QVBoxLayout()
         self.form_c1_layout.addWidget(self.healthy_box)
         self.form_c1_layout.addWidget(self.type_box)
@@ -327,8 +403,6 @@ class AppDemo(QWidget):
         self.form_c3_layout = QVBoxLayout()
         self.form_c3_layout.addWidget(self.bf_box)
         self.form_c3_layout.addWidget(self.level_box)
-
-        # Coordinates input for x, y, z
         self.coord_box = QGroupBox("Coordinates")
         self.x0_input = QLineEdit()
         self.xf_input = QLineEdit()
@@ -344,29 +418,24 @@ class AppDemo(QWidget):
         self.coord_layout.addWidget(QLabel("z:"))
         self.coord_layout.addWidget(self.z_input)
         self.coord_box.setLayout(self.coord_layout)
-
-        # Add Back, Next, Discard & Send buttons in separate boxes
         self.send_button = QPushButton("Send")
         self.send_button.clicked.connect(self.on_send_clicked)
         self.send_box = QGroupBox()
         self.send_layout = QVBoxLayout()
         self.send_layout.addWidget(self.send_button)
         self.send_box.setLayout(self.send_layout)
-
         self.discard_button = QPushButton("Discard")
         self.discard_button.clicked.connect(self.on_discard_clicked)
         self.discard_box = QGroupBox()
         self.discard_layout = QVBoxLayout()
         self.discard_layout.addWidget(self.discard_button)
         self.discard_box.setLayout(self.discard_layout)
-
         self.back_button = QPushButton("Back")
         self.back_button.clicked.connect(self.on_back_clicked)
         self.back_box = QGroupBox()
         self.back_layout = QVBoxLayout()
         self.back_layout.addWidget(self.back_button)
         self.back_box.setLayout(self.back_layout)
-
         self.next_button = QPushButton("Next")
         self.next_button.clicked.connect(self.on_next_clicked)
         self.next_box = QGroupBox()
@@ -387,7 +456,6 @@ class AppDemo(QWidget):
                 background-color: #DADADA; /* Slightly darker on hover */
             }
         """
-
         send_button_style = default_button_style + """
             QPushButton {
                 background-color: #C0D8EE; /* Softer pale blue */
@@ -396,14 +464,10 @@ class AppDemo(QWidget):
                 background-color: #A8C7E2;
             }
         """
-
-        # Apply styles
         self.send_button.setStyleSheet(send_button_style)   
         self.discard_button.setStyleSheet(default_button_style)  
         self.back_button.setStyleSheet(default_button_style)  
         self.next_button.setStyleSheet(default_button_style)  
-
-        # Combine all button boxes in a horizontal layout
         self.button_layout_1 = QVBoxLayout()
         self.button_layout_2 = QVBoxLayout()
         self.button_layout_1.addWidget(self.next_box)
@@ -423,8 +487,10 @@ class AppDemo(QWidget):
         self.r1_layout.addLayout(self.button_layout_2)
         self.r1_layout.addLayout(self.button_layout_1)
         self.layout.addLayout(self.r1_layout)
-        self.layout.addWidget(self.coord_box)
-        self.layout.addWidget(self.notes_box)
+        self.r2_layout = QHBoxLayout()
+        self.r2_layout.addWidget(self.notes_box)
+        self.r2_layout.addWidget(self.coord_box)
+        self.layout.addLayout(self.r2_layout)
         self.setLayout(self.layout)
 
     def update_widgets(self):
@@ -472,15 +538,19 @@ class AppDemo(QWidget):
 
         self.file_combobox.clear()
         self.file_combobox.addItems(self.files_with_tags_list)
+    
+    def update_directory_combobox(self):
+
+        self.directory_combobox.clear()
+        self.directory_combobox.addItems(self.directories_with_tags_list)
 
     def update_dashboard(self):
+
         plt.close(self.chart.figure)
         self.layout.removeWidget(self.chart)
         self.chart.deleteLater()
         self.chart = Canvas(self)
         self.layout.insertWidget(1, self.chart)
-
-    # Action functions
 
     def on_send_clicked(self):
 
@@ -535,7 +605,6 @@ class AppDemo(QWidget):
             message_box.setText(f"Saving the following for {self.dir}{self.checkpoint} at {self.datachannel}\n"
                                 f"{confirmation_message}")
             message_box.exec_()
-
             print(f"{datetime.now()} - Message: successfully submited user's answer for file {self.dir}{self.checkpoint} at {self.datachannel}.")
         else:
             index_to_update = self.existing_entry.index[0]
@@ -710,8 +779,6 @@ class AppDemo(QWidget):
         self.update_files_list()
         self.update_widgets()
         self.update_dashboard()
-        # self.update_file_combobox()
-        # self.file_combobox.setCurrentText(next(item for item in self.files_with_tags_list if item.startswith(self.checkpoint)))
 
     def closeEvent(self, event):
         print(f"{datetime.now()} - Action: exit button clicked.")
@@ -736,14 +803,22 @@ if __name__ == "__main__":
 
     if user == "perecornella":
         root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
+        progress_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv'
+        annotations_path = root_dir + f'Pere/metadata/annotations.csv'
+        discarded_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_discarded.csv'
+
     elif user == "ar65":
         root_dir = "/Users/ar65/Library/CloudStorage/GoogleDrive-ar65@nyu.edu/My Drive/ReyesLabNYU/"
-    else:
-        sys.exit(1) # TODO
+        progress_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv'
+        annotations_path = root_dir + f'Pere/metadata/annotations.csv'
+        discarded_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_discarded.csv'
 
-    progress_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv'
-    annotations_path = root_dir + f'Pere/metadata/annotations.csv'
-    discarded_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_discarded.csv'
+    else:
+        root_dir = "./toy_dataset/"
+        progress_path = root_dir + f'metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv'
+        annotations_path = root_dir + f'metadata/annotations.csv'
+        discarded_path = root_dir + f'metadata/progress/{shape}_{channel}_{mean}_{symmetry}_discarded.csv'
+
     progress = pd.read_csv(progress_path)
     try:
         annotations = pd.read_csv(annotations_path)

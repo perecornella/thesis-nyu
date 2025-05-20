@@ -3,78 +3,37 @@ import time
 import sys
 import os
 
-# def crawl_database(root_dir: str):
+def crawl_database(root_dir: str):
 
-#     list_of_folders = []
-#     for folder in os.listdir(root_dir):
-#         if folder == 'in_vivo_data_pw':
-#             for dir_aux in os.listdir(root_dir + folder):
-#                 if dir_aux[0] == str(1):
-#                     list_of_folders.append(f"{folder}/{dir_aux}/")
-#         elif folder[0] == str(1):
-#             list_of_folders.append(f"{folder}/")
-#         else:
-#             pass
+    list_of_folders = []
+    for folder in os.listdir(root_dir):
+        if folder == 'in_vivo_data_pw':
+            for dir_aux in os.listdir(root_dir + folder):
+                if dir_aux[0] == str(1):
+                    list_of_folders.append(f"{folder}/{dir_aux}/")
+        elif folder[0] == str(1):
+            list_of_folders.append(f"{folder}/")
+        else:
+            pass
 
-#     dir_info = pd.DataFrame(columns=['name', 'non checked files', 'checked files', 'error files'])
+    dir_info = pd.DataFrame(columns=['directory', 'non checked files', 'checked files', 'error files'])
     
-#     for folder in list_of_folders:
-#         non_checked_files = []
-#         for file_name in os.listdir(root_dir + folder):
-#             if file_name.startswith('A') and file_name[-3] == "d":
-#                 non_checked_files.append(file_name[0:-3])
+    for folder in list_of_folders:
+        non_checked_files = []
+        for file_name in os.listdir(root_dir + folder):
+            if file_name.startswith('A') and file_name[-3] == "d":
+                non_checked_files.append(file_name[0:-3])
     
-#         info = {'name': folder,
-#                 'non checked files': sorted(non_checked_files),
-#                 'checked files': [],
-#                 'error files': []}
+        info = {'directory': folder,
+                'non checked files': sorted(non_checked_files),
+                'checked files': [],
+                'error files': []}
         
-#         dir_info = dir_info._append(info, ignore_index = True)
+        dir_info = dir_info._append(info, ignore_index = True)
 
-#     dir_info = dir_info.sort_values(by=['name'], ascending=True)
+    dir_info = dir_info.sort_values(by=['directory'], ascending=True)
     
-#     return dir_info
-
-# if __name__ == "__main__":
-
-#     user = sys.argv[1]
-#     if user == "perecornella":
-#         root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
-#     elif user == "ar65":
-#         root_dir = "/Users/ar65/Library/CloudStorage/GoogleDrive-ar65@nyu.edu/My Drive/ReyesLabNYU/"
-#     else:
-#         root_dir = "toy_dataset/"
-
-#     dir_info = crawl_database(root_dir)
-#     dir_info.to_csv(f'./users/{user}/metadata/progress.csv', index=False)
-
-# def create_progress_file(root_dir: str, shape, channel, mean, symmetry):
-
-#     file_info = pd.read_csv(root_dir + f"Pere/metadata/file_info.csv")
-#     file_info = file_info[(file_info['shape'] == shape) & (file_info['channel'] == channel)]
-#     file_info['mean'] = file_info['mean'].apply(lambda x: 'zeromean' if -2 < x < 2 else 'other')
-#     file_info = file_info[file_info['mean'] == mean]
-#     threshold = 0.5 # TODO
-#     file_info['symmetry'] = \
-#         file_info['mean', 'max', 'min'].apply(
-#             lambda x: 'asymmetric' if abs(abs(x['mean']-x['max'])-abs(x['mean']-x['min'])) > threshold else 'symmetric')
-#     file_info = file_info[file_info['symmetry'] == symmetry]
-    
-#     annotations = pd.read_csv(root_dir + f"Pere/metadata/annotations.csv")
-#     progress = pd.DataFrame(columns=['directory', 'non checked files', 'checked files', 'error files'])
-#     for directory in file_info['directory'].unique():
-#         non_checked_files = []
-#         for index, row in file_info[file_info['directory'] == directory].iterrows():
-#             non_checked_files.append(row['filename'])
-    
-#         info = {'directory': directory,
-#                 'non checked files': sorted(non_checked_files),
-#                 'checked files': [],
-#                 'error files': []}
-        
-#         progress = progress._append(info, ignore_index = True)
-#     progress = progress.sort_values(by=['name'], ascending=True)
-#     return progress
+    return dir_info
 
 def create_progress_file(root_dir: str, shape, channel, mean, symmetry):
 
@@ -126,15 +85,27 @@ if __name__ == "__main__":
 
     if user == "perecornella":
         root_dir = "/Users/perecornella/Library/CloudStorage/GoogleDrive-pere.cornella@estudiantat.upc.edu/My Drive/ReyesLabNYU/"
+        progress_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv'
+        annotations_path = root_dir + f'Pere/metadata/annotations.csv'
+        discarded_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_discarded.csv'
+
     elif user == "ar65":
         root_dir = "/Users/ar65/Library/CloudStorage/GoogleDrive-ar65@nyu.edu/My Drive/ReyesLabNYU/"
-    else:
-        sys.exit(1)
+        progress_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv'
+        annotations_path = root_dir + f'Pere/metadata/annotations.csv'
+        discarded_path = root_dir + f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_discarded.csv'
 
-    progress_path = os.path.join(root_dir, f'Pere/metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv')
+    else:
+        root_dir = "./toy_dataset/"
+        if not os.path.exists(root_dir + 'metadata/progress/'):
+            os.makedirs(root_dir +  'metadata/progress/')
+        progress_path = root_dir + f'metadata/progress/{shape}_{channel}_{mean}_{symmetry}_progress.csv'
 
     try:
         pd.read_csv(progress_path)
     except FileNotFoundError:
-        progress = create_progress_file(root_dir, shape, channel, mean, symmetry)
+        if user == "perecornell" or user ==  "ar65":
+            progress = create_progress_file(root_dir, shape, channel, mean, symmetry)
+        else:
+            progress = crawl_database(root_dir)
         progress.to_csv(progress_path, index=False)
